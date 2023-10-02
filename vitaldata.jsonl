@@ -1,0 +1,56 @@
+{"text": "Special thanks to Karl Floersch and Justin Drake for feedback and review The Ethereum networks consensus is one of the most highly secured cryptoeconomic systems out"}
+{"text": "there  million ETH  billion worth of validators finalize a block every  minutes running many different implementations of the protocol for redundancy And if the cryptoeconomic"}
+{"text": "consensus fails whether due to a bug or an intentional  attack a vast community of many thousands of developers and many more users are watching carefully to make sure"}
+{"text": "the chain recovers correctly Once the chain recovers protocol rules ensure that attackers will likely be heavily penalized Over the years there have been a number of"}
+{"text": "ideas usually at the thought experiment stage to also use the Ethereum validator set and perhaps even the Ethereum social consensus for other purposes The purpose of this post will"}
+{"text": "be to explain in detail the argument why in my view a certain subset of these techniques brings high systemic risks to the ecosystem and should be discouraged and resisted"}
+{"text": "These proposals are generally made in a wellintentioned way and so the goal is not to focus on individuals or projects rather the goal is to focus"}
+{"text": "on techniques The general rule of thumb that this post will attempt to defend is as follows dualuse of validator staked ETH while it has some risks is"}
+{"text": "fundamentally fine but attempting to recruit Ethereum social consensus for your applications own purposes is not If youre designing a protocol where even if everything completely breaks the losses are"}
+{"text": "kept contained to the validators and users who opted in to participating in and using your protocol this is lowrisk If on the other hand you have the intent"}
+{"text": "to rope in the broader Ethereum ecosystem social consensus to fork or reorg to solve your problems this is highrisk and I argue that we should strongly resist"}
+{"text": "all attempts to create such expectations A middle ground is situations that start off in the lowrisk category but give their participants incentives to slide into the"}
+{"text": "higherrisk category SchellingCoinstyle techniques especially mechanisms with heavy penalties for deviating from the majority are a major example It is the year"}
+{"text": "Frustrated with the existing options a group has decided to make a new ETHUSD price oracle which works by allowing validators to vote on the price"}
+{"text": "every hour If a validator votes they would be unconditionally rewarded with a portion of fees from the system But soon participants became lazy they connected to centralized APIs"}
+{"text": "and when those APIs got cyberattacked they either dropped out or started reporting false values To solve this incentives were introduced the oracle also votes retrospectively on"}
+{"text": "the price one week ago and if your real time or retrospective vote is more than  away from the median retrospective vote you are heavily penalized with the"}
+{"text": "penalty going to those who voted correctly Within a year over  of validators are participating Someone asked what if Lido bands together with a few other large"}
+{"text": "stakers to  attack the vote forcing through a fake ETHUSD price value extracting heavy penalties from everyone who does not participate in the attack The oracles"}
+{"text": "proponents at this point heavily invested in the scheme reply well if that happens Ethereum will surely fork to kick the bad guys out At first the scheme is limited"}
+{"text": "to ETHUSD and it appears resilient and stable But over the years other indices get added ETHEUR ETHCNY and eventually rates for all countries in"}
+{"text": "the G But in  things start to go wrong Brazil has an unexpectedly severe political crisis leading to a disputed election One political party ends up in control of"}
+{"text": "the capital and  of the country but another party ends up in control of some northern areas Major Western media argue that the northern party is clearly the legitimate"}
+{"text": "winner because it acted legally and the southern party acted illegally and by the way are fascist Indian and Chinese official sources and Elon Musk argue that the southern party"}
+{"text": "has actual control of most of the country and the international community should not try to be a world police and should instead accept the outcome By this point Brazil"}
+{"text": "has a CBDC which splits into two forks the northern BRLN and the southern BRLS When voting in the oracle  of Ethereum stakers"}
+{"text": "provide the ETHBRLS rate Major community leaders and businesses decry the stakers craven capitulation to fascism and propose to fork the chain to"}
+{"text": "only include the good stakers providing the ETHBRLN rate and drain the other stakers balances to nearzero Within their social media bubble they believe"}
+{"text": "that they will clearly win However once the fork hits the BRLS side proves unexpectedly strong What they expected to be a landslide instead proves to be pretty"}
+{"text": "much a  community split At this point the two sides are in their two separate universes with their two chains with no practical way of coming back together"}
+{"text": "Ethereum a global permissionless platform created in part to be a refuge from nations and geopolitics instead ends up cleaved in half by any one of the"}
+{"text": "twenty G member states having an unexpectedly severe internal issue A blockchains purity in the sense of it being a purely mathematical construct that attempts to come to consensus"}
+{"text": "only on purely mathematical things is a huge advantage As soon as a blockchain tries to hook in to the outside world the outside worlds conflicts start to impact on"}
+{"text": "the blockchain too Given a sufficiently extreme political event  in fact not that extreme a political event given that the above story was basically a pastiche of events"}
+{"text": "that have actually happened in various major m population countries all within the past decade  even something as benign as a currency oracle could tear the community apart Here"}
+{"text": "are a few more possible scenarios But more importantly Id argue that there is a Schelling fence at play once a blockchain starts incorporating realworld price indices as"}
+{"text": "a layer protocol feature it could easily succumb to interpreting more and more realworld information Introducing layer price indices also expands the blockchains legal attack surface"}
+{"text": "instead of being just a neutral technical platform it becomes much more explicitly a financial tool Any expansion of the duties of Ethereums consensus increases the costs complexities"}
+{"text": "and risks of running a validator Validators become required to take on the human effort of paying attention and running and updating additional software to make sure that they are"}
+{"text": "acting correctly according to whatever other protocols are being introduced Other communities gain the ability to externalize their dispute resolution needs onto the Ethereum community Validators and the Ethereum"}
+{"text": "community as a whole become forced to make far more decisions each of which has some risk of causing a community split Even if there is no split the desire"}
+{"text": "to avoid such pressure creates additional incentives to externalize the decisions to centralized entities through stakepooling The possibility of a split would also greatly strengthen perverse"}
+{"text": "toobigtofail mechanics There are so many layer and applicationlayer projects on Ethereum that it would be impractical for Ethereum social consensus to be willing"}
+{"text": "to fork to solve all of their problems Hence larger projects would inevitably get a larger chance of getting a bailout than smaller ones This would in turn lead to"}
+{"text": "larger projects getting a moat would you rather have your coins on Arbitrum or Optimism where if something goes wrong Ethereum will fork to save the day"}
+{"text": "or on Taiko where because its smaller and nonWestern hence less socially connected to core dev circles an Lbacked rescue is much less likely The best"}
+{"text": "solutions to these problems are in my view casebycase because the various problems are inherently so different from each other Some solutions include Blockchain communities social consensus is"}
+{"text": "a fragile thing Its necessary  because upgrades happen bugs happen and  attacks are always a possibility  but because it has such a high risk of causing chain"}
+{"text": "splits in mature communities it should be used sparingly There is a natural urge to try to extend the blockchains core with more and more functionality because the"}
+{"text": "blockchains core has the largest economic weight and the largest community watching it but each such extention makes the core itself more fragile We should be wary of"}
+{"text": "applicationlayer projects taking actions that risk increasing the scope of blockchain consensus to anything other than verifying the core Ethereum protocol rules It is natural for applicationlayer projects"}
+{"text": "to attempt such a strategy and indeed such ideas are often simply conceived without appreciation of the risks but its result can easily become very misaligned with the goals"}
+{"text": "of the community as a whole Such a process has no limiting principle and could easily lead to a blockchain community having more and more mandates over time pushing it"}
+{"text": "into an uncomfortable choice between a high yearly risk of splitting and some kind of defacto formalized bureaucracy that has ultimate control of the chain We should"}
+{"text": "instead preserve the chains minimalism support uses of restaking that do not look like slippery slopes to extending the role of Ethereum consensus and help developers find alternate"}
+{"text": "strategies to achieve their security goals"}
