@@ -1,16 +1,712 @@
-{"text": "Special thanks to Karl Floersch and Justin Drake for feedback and review The Ethereum networks consensus is one of the most highly secured cryptoeconomic systems out"}
-{"text": "there  million ETH  billion worth of validators finalize a block every  minutes running many different implementations of the protocol for redundancy And if the cryptoeconomic"}
-{"text": "consensus fails whether due to a bug or an intentional  attack a vast community of many thousands of developers and many more users are watching carefully to make sure"}
-{"text": "the chain recovers correctly Once the chain recovers protocol rules ensure that attackers will likely be heavily penalized Over the years there have been a number of"}
-{"text": "ideas usually at the thought experiment stage to also use the Ethereum validator set and perhaps even the Ethereum social consensus for other purposes The purpose of this post will"}
-{"text": "be to explain in detail the argument why in my view a certain subset of these techniques brings high systemic risks to the ecosystem and should be discouraged and resisted"}
-{"text": "These proposals are generally made in a wellintentioned way and so the goal is not to focus on individuals or projects rather the goal is to focus"}
-{"text": "on techniques The general rule of thumb that this post will attempt to defend is as follows dualuse of validator staked ETH while it has some risks is"}
-{"text": "fundamentally fine but attempting to recruit Ethereum social consensus for your applications own purposes is not If youre designing a protocol where even if everything completely breaks the losses are"}
-{"text": "kept contained to the validators and users who opted in to participating in and using your protocol this is lowrisk If on the other hand you have the intent"}
-{"text": "to rope in the broader Ethereum ecosystem social consensus to fork or reorg to solve your problems this is highrisk and I argue that we should strongly resist"}
-{"text": "all attempts to create such expectations A middle ground is situations that start off in the lowrisk category but give their participants incentives to slide into the"}
-{"text": "higherrisk category SchellingCoinstyle techniques especially mechanisms with heavy penalties for deviating from the majority are a major example It is the year"}
+{"text": "Special thanks to Justin Drake Tina Zhen and Yoav Weiss for feedback and review From the start of the Ethereum project there was a strong philosophy of trying"}
+{"text": "to make the core Ethereum as simple as possible and do as much as possible by building protocols on top In the blockchain space the do it on L vs"}
+{"text": "focus on Ls debate is typically thought of as being primarily about scaling but in reality similar issues exist for serving many kinds of Ethereum users needs digital asset"}
+{"text": "exchange privacy usernames advanced cryptography account safety censorship resistance frontrunning protection and the list goes on More recently however there has been some cautious interest in being willing"}
+{"text": "to enshrine more of these features into the core Ethereum protocol This post will go into some of the philosophical reasoning behind the original minimalenshrinement"}
+{"text": "philosophy as well as some more recent ways of thinking about some of these ideas The goal will be to start to build toward a framework for better identifying possible"}
+{"text": "targets where enshrining certain features in the protocol might be worth considering Early on in the history of what was then called Ethereum  there was a strong"}
+{"text": "desire to create a clean simple and beautiful protocol that tried to do as little as possible itself and left almost everything up to users to build on top Ideally"}
+{"text": "the protocol would just be a virtual machine and verifying a block would just be a single virtual machine call   A very approximate reconstructionfrommemory of a"}
+{"text": "whiteboard drawing Gavin Wood and I made back in early  talking about what Ethereum  would look like  The state transition function the function that processes a"}
+{"text": "block would just be a single VM call and all other logic would happen through contracts a few systemlevel contracts but mostly contracts provided by users One really nice"}
+{"text": "feature of this model is that even an entire hard fork could be described as a single transaction to the block processor contract which would be approved through either"}
+{"text": "offchain or onchain governance and then run with escalated permissions These discussions back in  particularly applied to two areas that were on our minds account abstraction and"}
+{"text": "scaling In the case of scaling the idea was to try to create a maximally abstracted form of scaling that would feel like a natural extension of the"}
+{"text": "diagram above A contract could make a call to a piece of data that was not stored by most Ethereum nodes and the protocol would detect that and resolve the"}
+{"text": "call through some kind of very generic scaledcomputation functionality From the virtual machines point of view the call would go off into some separate subsystem and then some"}
+{"text": "time later magically come back with the correct answer This line of thinking was explored briefly but soon abandoned because we were too preoccupied with verifying that any kind"}
+{"text": "of blockchain scaling was possible at all Though as we will see later the combination of data availability sampling and ZKEVMs means that one possible future for"}
+{"text": "Ethereum scaling might actually look surprisingly close to that vision For account abstraction on the other hand we knew from the start that some kind of implementation was possible and"}
+{"text": "so research immediately began to try to make something as close as possible to the purist starting point of a transaction is just a call into reality"}
+{"text": "There is a lot of boilerplate code that occurs in between processing a transaction and making the actual underlying EVM call out of the sender address and a"}
+{"text": "lot more boilerplate that comes after How do we reduce this code to as close to nothing as possible  One of the major pieces of code in here"}
+{"text": "is validatetransactionstate tx which does things like checking that the nonce and signature of the transaction are correct The practical goal of account abstraction was"}
+{"text": "from the start to allow the user to replace basic nonceincrementing and ECDSA validation with their own validation logic so that users could more easily use things"}
+{"text": "like social recovery and multisig wallets Hence finding a way to rearchitect applytransaction into just being a simple EVM call was not simply a make"}
+{"text": "the code clean for the sake of making the code clean task rather it was about moving the logic into the users account code to give users that needed flexibility"}
+{"text": "However the insistence on trying to make applytransaction contain as little enshrined logic as possible ended up introducing a lot of challenges To see why let us"}
+{"text": "zoom in on one of the earliest account abstraction proposals EIP  If blocknumber  METROPOLISFORKBLKNUM then  If the"}
+{"text": "signature of a transaction is    ie v  r  s   then treat it as valid and set the sender address to"}
+{"text": "Set the address of any contract created through a creation transaction to equal sha  init code   where  represents concatenation replacing the earlier address formula"}
+{"text": "of sharlpencodesender nonce  Create a new opcode at xfb CREATEPSH which sets the creation address to shasender  init code"}
+{"text": "If a contract at that address already exists fails and returns  as if the init code had run out of gas  Basically if the signature is"}
+{"text": "set to    then a transaction really does become just a call The account itself would be responsible for having code that parses the transaction extracts and verifies"}
+{"text": "the signature and nonce and pays fees see here for an early example version of that code and see here for the very similar validatetransaction code"}
+{"text": "that this account code would be replacing In exchange for this simplicity at protocol layer miners or today block proposers gain the additional responsibility of running extra logic for"}
+{"text": "only accepting and forwarding transactions that go to accounts whose code is set up to actually pay fees What is that logic Well honestly EIP did not think too"}
+{"text": "hard about it  Note that miners would need to have a strategy for accepting these transactions This strategy would need to be very discriminating because otherwise they run"}
+{"text": "the risk of accepting transactions  for the validatetransaction code that this preaccount code would be replacingthat do not pay them any fees and"}
+{"text": "possibly even transactions that have no effect eg because the transaction was already included and so the nonce is no longer current One simple approach is to have a whitelist"}
+{"text": "for the codehash of accounts that they accept transactions being sent to approved code would include logic that pays miners transaction fees However this is arguably too restrictive a"}
+{"text": "looser but still effective strategy would be to accept any code that fits the same general format as the above consuming only a limited amount of gas to perform"}
+{"text": "nonce and signature checks and having a guarantee that transaction fees will be paid to the miner Another strategy is to alongside other approaches try to process any transaction that"}
+{"text": "asks for less than  gas and include it only if the miners balance is appropriately higher after executing the transaction than before it    The"}
+{"text": "multiinvalidation problem in account abstraction One transaction getting included on chain could invalidate thousands of other transactions in the mempool making the mempool easy to"}
+{"text": "cheaply flood  Acccount abstraction evolved in stages from there EIP became EIP which later became this ethresearch post on tradeoffs in account abstraction"}
+{"text": "proposals which then became this ethresearch post half a year later Eventually out of all this came the actually somewhatworkable EIP EIP however was not"}
+{"text": "minimalistic at all The EIP includes In order to get account abstraction off the ground without involving Ethereum core developers who were busy on heroic efforts optimizing the"}
+{"text": "Ethereum clients and implementing the merge EIP eventually was rearchitected into the entirely extraprotocol ERC   ERC It really does rely entirely"}
+{"text": "on EVM calls for everything  Because its an ERC it does not require a hard fork and technically lives outside of the Ethereum protocol So problem solved Well"}
+{"text": "as it turns out not quite The current mediumterm roadmap for ERC actually does involve eventually turning large parts of ERC into a series of protocol features and its"}
+{"text": "a useful instructive example to see the reasons why this path is being considered There have been a few key reasons discussed for eventually bringing ERC back into the"}
+{"text": "protocol Its worth zooming into the gas efficiency issue further In its current form ERC is significantly more expensive than a basic Ethereum transaction the transaction costs  gas"}
+{"text": "whereas ERC costs  gas This doc lists some of the reasons why Theoretically it should be possible to massage the EVM gas cost system until the"}
+{"text": "inprotocol costs and the extraprotocol costs for accessing storage match there is no reason why transferring ETH needs to cost  gas when other kinds of"}
+{"text": "storageediting operations are much cheaper And indeed two EIPs   related to the upcoming Verkle tree transition actually try to do that But even if"}
+{"text": "we do that there is one huge reason why enshrined protocol features are going to inevitably be significantly cheaper than EVM code no matter how efficient the"}
+{"text": "EVM becomes enshrined code does not need to pay gas for being preloaded Fully functional ERC wallets are big This implementation compiled and put on chain"}
+{"text": "takes up  bytes Of course you can deploy that big piece of code once and use DELEGATECALL to allow each individual wallet to call into it"}
+{"text": "but that code still needs to be accessed in each block that uses it Under the Verkle tree gas costs EIP  bytes would make up  chunks"}
+{"text": "and accessing those chunks would require paying x WITNESSBRANCHCOST  gas total and x WITNESSCHUNKCOST  gas total"}
+{"text": "And this does not even begin to mention the ERC entrypoint itself with  bytes onchain in version  under the Verkle tree EIP rules"}
+{"text": "gas to load This leads to a problem the gas costs of actually accessing this code would have to be split among transactions somehow The current approach that ERC uses"}
+{"text": "is not great the first transaction in a bundle eats up onetime storagecode reading costs making it much more expensive than the rest of the transactins"}
+{"text": "Enshrinement inprotocol would allow these commonlyshared libraries to simply be part of the protocol accessible to all with no fees In this example we saw"}
+{"text": "a few different rationales for enshrining aspects of account abstraction in the protocol But it is important to remember that even enshrined inprotocol account"}
+{"text": "abstraction is still a massive deenshrinement compared to the status quo Today toplevel Ethereum transactions can only be initiated from externally owned accounts EOAs which"}
+{"text": "use a single secpk elliptic curve signature for verification Account abstraction deenshrines this and leaves verification conditions open for users to define And so"}
+{"text": "in this story about account abstraction we also saw the biggest argument against enshrinement being flexible to diverse users needs    Let us try to"}
+{"text": "fill in the story further by looking at a few other examples of features that have recently been considered for enshrinement Well particularly focus on"}
+{"text": "ZKEVMs proposerbuilder separation private mempools liquid staking and new precompiles Let us switch focus to another potential target for"}
+{"text": "enshrining into the Ethereum protocol ZKEVMs Currently we have a large number of ZKrollups that all have to write fairly similar code"}
+{"text": "to verify execution of Ethereumlike blocks inside a ZKSNARK There is a pretty diverse ecosystem of independent implementations the PSE ZKEVM"}
+{"text": "Kakarot the Polygon ZKEVM Linea Zeth and the list goes on One of the recent controversies in the EVM ZKrollup"}
+{"text": "space has to do with how to deal with the possibility of bugs in the ZKcode Currently all of these systems that are live have some form of"}
+{"text": "security council mechanism that can override the proving system in case of a bug In this post last year I tried to create a standardized framework to encourage projects to"}
+{"text": "be clear about what level of trust they put in the proving system and what level in the security council and move toward giving less and less powers to the"}
+{"text": "security council over time   In the medium term rollups could rely on multiple proving systems and the security council would only have any power at all in"}
+{"text": "the extreme case where two different proving systems disagree with each other  However there is a sense in which some of this work feels superfluous We already"}
+{"text": "have the Ethereum base layer which has an EVM and we already have a working mechanism for dealing with bugs in implementations if theres a bug the clients that"}
+{"text": "have the bug update to fix the bug and the chain goes on Blocks that appeared finalized from the perspective of a buggy client would end up"}
+{"text": "nolongerfinalized but at least we would not see users losing funds Similarly if a rollup just wants to be and remain"}
+{"text": "EVMequivalent it feels wrong that they need to implement their own governance to keep changing their internal ZKEVM rules to match upgrades to the Ethereum"}
+{"text": "base layer when ultimately theyre building on top of the Ethereum base layer itself which knows when its being upgraded and to what new rules Since these L"}
+{"text": "ZKEVMs are basically using the exact same EVM as Ethereum cant we somehow make verify EVM execution in ZK into a protocol feature and"}
+{"text": "deal with exceptional situations like bugs and upgrades by just applying Ethereums social consensus the same way we already do for baselayer EVM execution itself"}
+{"text": "This is an important and challenging topic There are a few nuances One likely topic of contention with data availability in a native ZKEVM is statefulness"}
+{"text": "ZKEVMs are much more dataefficient if they do not have to carry witness data That is if a particular piece of data was already read or"}
+{"text": "written in some previous block we can simply assume that provers have access to it and we dont have to make it available again This goes beyond not reloading"}
+{"text": "storage and code it turns out that if a rollup properly compresses data the compression being stateful allows for up to x data savings compared to the"}
+{"text": "compression being stateless    This means that for a ZKEVM precompile we have two options What lessons can we take away from this There"}
+{"text": "is a pretty good argument to enshrine ZKEVM validation somehow rollups are already building their own custom versions of it and it feels wrong that"}
+{"text": "Ethereum is willing to put the weight of its multiple implementations and offchain social consensus behind EVM execution on L but Ls doing the exact same work"}
+{"text": "have to instead implement complicated gadgets involving security councils But on the other hand there is a big devil in the details there are different versions of an"}
+{"text": "enshrined ZKEVM that have different costs and benefits The stateful vs stateless divide only scratches the surface attempting to support almostEVMs"}
+{"text": "that have custom code proven by other systems will likely reveal an even larger design space Hence enshrining ZKEVMs presents both promise and challenges The"}
+{"text": "rise of MEV has made block production into an economiesofscaleheavy activity with sophisticated actors being able to produce blocks that generate much more revenue than default"}
+{"text": "algorithms that simply watch the mempool for transactions and include them The Ethereum community has so far attempted to deal with this by using extraprotocol"}
+{"text": "proposerbuilder separation schemes like MEVBoost which allow regular validators proposers to outsource block building to specialized actors builders However MEVBoost carries a"}
+{"text": "trust assumption in a new category of actor called a relay For the past two years there have been many proposals to create enshrined PBS What is the"}
+{"text": "benefit of this In this case the answer is pretty simple the PBS that can be built by directly using the powers of the protocol is simply stronger in the"}
+{"text": "sense of having weaker trust assumptions than the PBS that can be built without them Its a similar case to the case for enshrining inprotocol price"}
+{"text": "oracles  though in that situation there is also a strong counterargument When a user sends a transaction that transaction becomes immediately public and visible to all even"}
+{"text": "before it gets included on chain This makes users of many applications vulnerable to economic attacks such as frontrunning if a user makes a large trade on eg"}
+{"text": "Uniswap an attacker could put in a transaction right before them increasing the price at which they buy and collecting an arbitrage profit Recently there has been"}
+{"text": "a number of projects specializing in creating private mempols or encrypted mempools which keep users transactions encrypted until the moment they get irreversibly accepted"}
+{"text": "into a block The problem is however that schemes like this require a particular kind of encryption to prevent users from flooding the system and frontrunning the decryption"}
+{"text": "process itself the encryption must autodecrypt once the transaction actually does get irreversibly accepted To implement such a form of encryption there are various different technologies"}
+{"text": "with different tradeoffs described well in this post by Jon Charbonneau and this video and slides Unfortunately each of these have varying weaknesses A centralized operator is"}
+{"text": "not acceptable for inclusion inprotocol for obvious reasons Traditional time lock encryption is too expensive to run across thousands of transactions in a public mempool A more powerful"}
+{"text": "primitive called delay encryption allows efficient decryption of an unlimited number of messages but its hard to construct in practice and attacks on existing constructions still sometimes get discovered Much"}
+{"text": "like with hash functions well likely need a period of more years of research and analysis before delay encryption becomes sufficiently mature Threshold encryption requires trusting a majority to not"}
+{"text": "collude in a setting where they can collude undetectably unlike  attacks where its immediately obvious who participated SGX creates a dependency on a single"}
+{"text": "trusted manufacturer While for each solution there is some subset of users that is comfortable trusting it there is no single solution that is trusted enough that it can practically"}
+{"text": "be accepted into layer  Hence enshrining antifrontrunning at layer  seems like a difficult proposition at least until delay encrypted is perfected or"}
+{"text": "there is some other technological breakthrough even while its a valuable enough functionality that lots of application solutions will already emerge A common demand among Ethereum defi users is"}
+{"text": "the ability to use their ETH for staking and as collateral in other applications at the same time Another common demand is simply for convenience users want to be"}
+{"text": "able to stake without the complexity of running a node and keeping it online all the time and protecting their nowonline staking keys By far the simplest possible"}
+{"text": "interface for staking which satisfies both of these needs is just an ERC token convert your ETH into staked ETH hold it and then later convert back And"}
+{"text": "indeed liquid staking providers such as Lido and Rocketpool have emerged to do just that However liquid staking has some natural centralizing mechanics at play"}
+{"text": "people naturally go into the biggest version of staked ETH because its most familiar and most liquid and most wellsupported by applications who in turn support it because"}
+{"text": "its more familiar and because its the one the most users will have heard of Each version of staked ETH needs to have some mechanism determining who can be"}
+{"text": "the underlying node operators It cant be unrestricted because then attackers would join and amplify their attacks with users funds Currently the top two are Lido which has a"}
+{"text": "DAO whitelisting node operators and Rocket Pool which allows anyone to run a node if they put down  ETH ie  of the capital as a deposit"}
+{"text": "These two approaches have different risks the Rocket Pool approach allows attackers to  attack the network and force users to pay most of the costs With the DAO approach"}
+{"text": "if a single such staking token dominates that leads to a single potentially attackable governance gadget controlling a very large portion of all Ethereum validators To the credit"}
+{"text": "of protocols like Lido they have implemented safeguards against this but one layer of defense may not be enough    In the short term one option is"}
+{"text": "to socially encourage ecosystem participants to use a diversity of liquid staking providers to reduce the chance that any single one becomes too large to be a systemic risk"}
+{"text": "In the longer term however this is an unstable equilibrium and there is peril in relying too much on moralistic pressure to solve problems One natural question arises might"}
+{"text": "it make sense to enshrine some kind of inprotocol functionality to make liquid staking less centralizing Here the key question is what kind of"}
+{"text": "inprotocol functionality Simply creating an inprotocol fungible staked ETH token has the problem that it would have to either have an enshrined Ethereumwide"}
+{"text": "governance to choose who runs the nodes or be openentry turning it into a vehicle for attackers One interesting idea is Dankrad Feists writings on liquid"}
+{"text": "staking maximalism First we bite the bullet that if Ethereum gets  attacked only perhaps  of the attacking ETH gets slashed This is a reasonable tradeoff"}
+{"text": "right now there is over  million ETH being staked and a cost of attack of  of that  million ETH is way overkill especially considering how"}
+{"text": "many kinds of outsidethemodel attacks can be pulled off for much less Indeed a similar tradeoff has already been explored in the supercommittee proposal for"}
+{"text": "implementing singleslot finality    If we accept that only  of attacking ETH gets slashed then over  of staked ETH would be invulnerable"}
+{"text": "to slashing and so  of staked ETH could be put into an inprotocol fungible liquid staking token that can then be used by other applications"}
+{"text": "This path is interesting But it still leaves open the question what is the specific thing that would get enshrined RocketPool already works in a way very"}
+{"text": "similar to this each node operator puts up some capital and liquid stakers put up the rest We could simply tweak a few constants bounding the maximum slashing penalty"}
+{"text": "to eg  ETH and Rocket Pools existing rETH would become riskfree There are other clever things that we can do with simple protocol tweaks For example"}
+{"text": "imagine that we want a system where there are two tiers of staking node operators high collateral requirement and depositors no minimum can join and leave any time"}
+{"text": "but we still want to guard against node operator centralization by giving a randomlysampled committee of depositors powers like suggesting lists of transactions that have to"}
+{"text": "be included for anticensorship reasons controlling the fork choice during an inactivity leak or needing to sign off on blocks This could be done in a"}
+{"text": "mostlyoutofprotocol way by tweaking the protocol to require each validator to provide i a regular staking key and ii an ETH address that can be called"}
+{"text": "to output a secondary staking key during each slot The protocol would give powers to these two keys but the mechanism for choosing the second key in each slot"}
+{"text": "could be left to staking pool protocols It may still be better to enshrine some things outright but its valuable to note that this enshrine"}
+{"text": "some things leave other things to users design space exists Precompiles or precompiled contracts are Ethereum contracts that implement complex cryptographic operations whose logic is natively"}
+{"text": "implemented in client code instead of EVM smart contract code Precompiles were a compromise adopted at the beginning of Ethereums development because the overhead of"}
+{"text": "a VM is too much for certain kinds of very complex and highly specialized code we can implement a few key operations valuable to important kinds of applications in native"}
+{"text": "code to make them faster Today this basically includes a few specific hash functions and elliptic curve operations There is currently a push to add a precompile for"}
+{"text": "secpr an elliptic curve slightly different from the secpk used for basic Ethereum accounts because it is wellsupported by trusted hardware modules and thus widespread"}
+{"text": "use of it could improve wallet security In recent years there have also been pushes to add precompiles for BLS BW generalized pairings and other features"}
+{"text": "The counterargument to these requests for more precompiles is that many of the precompiles that have been added before eg RIPEMD and"}
+{"text": "BLAKE have ended up gotten used much less than anticipated and we should learn from that Instead of adding more precompiles for specific operations we should perhaps"}
+{"text": "focus on a more moderate approach based on ideas like EVMMAX and the dormantbutalwaysrevivable SIMD proposal which would allow EVM implementations to execute"}
+{"text": "wide classes of code less expensively Perhaps even existing littleused precompiles could be removed and replaced with unavoidably less efficient EVM code implementations of"}
+{"text": "the same function That said it is still possible that there are specific cryptographic operations that are valuable enough to accelerate that it makes sense to add them as"}
+{"text": "precompiles The desire to enshrine as little as possible is understandable and good it hails from the Unix philosophy tradition of creating software that is"}
+{"text": "minimalist and can be easily adapted to different needs by its users avoiding the curses of software bloat However blockchains are not personalcomputing operating systems they"}
+{"text": "are social systems This means that there are rationales for enshrining certain features in the protocol that go beyond the rationales that exist in a purely"}
+{"text": "personalcomputing context In many cases these other examples recapped similar lessons to what we saw in account abstraction But there are also a few new lessons that"}
+{"text": "have been learned as well Additionally the liquid staking ZKEVM and precompile cases show the possibility of a middle road minimal viable enshrinement"}
+{"text": "Rather than enshrining an entire functionality the protocol could enshrine a specific piece that solves the key challenges with making that functionality easy to implement without"}
+{"text": "being too opinionated or narrowly focused Examples of this include We can extend our diagram from earlier in the post as follows    Sometimes it may even"}
+{"text": "make sense to deenshrine a few things Deenshrining littleused precompiles is one example Account abstraction as a whole as mentioned earlier"}
+{"text": "is also a significant form of deenshrinement If we want to support backwardscompatibility for existing users then the mechanism may actually be surprisingly similar to"}
+{"text": "that for deenshrining precompiles one of the proposals is EIP which would allow EOAs to convert their account inplce into a"}
+{"text": "contract that has the same or better functionality What features should be brought into the protocol and what features should be left to other layers of the ecosystem is a"}
+{"text": "complicated tradeoff and we should expect the tradeoff to continue to evolve over time as our understanding of users needs and our suite of available ideas and technologies"}
+{"text": "continues to improveSpecial thanks to Dennis Pourteaux and Jay Baxter for feedback and review The last two years of Twitter X have been tumultuous to say"}
+{"text": "the least After the platform was bought not bought bought by Elon Musk for  billion last year Elon enacted sweeping changes to the companys staffing content moderation and"}
+{"text": "business model not to mention changes to the culture on the site that may well have been a result of Elons soft power more than any specific policy decision"}
+{"text": "But in the middle of these highly contentious actions one new feature on Twitter grew rapidly in importance and seems to be beloved by people across the political spectrum Community"}
+{"text": "Notes    Community Notes is a factchecking tool that sometimes attaches context notes like the one on Elons tweet above to tweets as a factchecking"}
+{"text": "and antimisinformation tool It was originally called Birdwatch and was first rolled out as a pilot project in January  Since then it has expanded in stages"}
+{"text": "with the most rapid phase of its expansion coinciding with Twitters takeover by Elon last year Today Community Notes appear frequently on tweets that get a very large"}
+{"text": "audience on Twitter including those on contentious political topics And both in my view and in the view of many people across the political spectrum I talk to the notes"}
+{"text": "when they appear are informative and valuable But what interests me most about Community Notes is how despite not being a crypto project it might be the closest thing to"}
+{"text": "an instantiation of crypto values that we have seen in the mainstream world Community Notes are not written or curated by some centrally selected set of experts rather they can"}
+{"text": "be written and voted on by anyone and which notes are shown or not shown is decided entirely by an open source algorithm The Twitter site has a detailed and"}
+{"text": "extensive guide describing how the algorithm works and you can download the data containing which notes and votes have been published run the algorithm locally and verify that the output"}
+{"text": "matches what is visible on the Twitter site Its not perfect but its surprisingly close to satisfying the ideal of credible neutrality all while being impressively useful even under"}
+{"text": "contentious conditions at the same time Anyone with a Twitter account matching some criteria basically active for  months no recent rule violations verified phone number can sign up to"}
+{"text": "participate in Community Notes Currently participants are slowly and randomly being accepted but eventually the plan is to let in anyone who fits the criteria Once you are accepted you"}
+{"text": "can at first participate in rating existing notes and once youve made enough good ratings measured by seeing which ratings match with the final outcome for that note you"}
+{"text": "can also write notes of your own When you write a note the note gets a score based on the reviews that it receives from other Community Notes members These"}
+{"text": "reviews can be thought of as being votes along a point scale of HELPFUL SOMEWHATHELPFUL and NOTHELPFUL but a review can also contain"}
+{"text": "some other tags that have roles in the algorithm Based on these reviews a note gets a score If the notes score is above  the note is shown otherwise"}
+{"text": "the note is not shown The way that the score is calculated is what makes the algorithm unique Unlike simpler algorithms which aim to simply calculate some kind of sum"}
+{"text": "or average over users ratings and use that as the final result the Community Notes rating algorithm explicitly attempts to prioritize notes that receive positive ratings from people across a"}
+{"text": "diverse range of perspectives That is if people who usually disagree on how they rate notes end up agreeing on a particular note that note is scored especially highly Let"}
+{"text": "us get into the deep math of how this works We have a set of users and a set of notes we can create a matrix M where the cell"}
+{"text": "Mij represents how the ith user rated the jth note    For any given note most users have not rated that note so most entries in"}
+{"text": "the matrix will be zero but thats fine The goal of the algorithm is to create a fourcolumn model of users and notes assigning each user two stats that"}
+{"text": "we can call friendliness and polarity and each note two stats that we can call helpfulness and polarity The model is trying to predict the matrix as a"}
+{"text": "function of these values using the following formula    Note that here I am introducing both the terminology used in the Birdwatch paper and my own terms"}
+{"text": "to provide a less mathematical intuition for what the variables mean The algorithm uses a pretty basic machine learning model standard gradient descent to find values for these variables that"}
+{"text": "do the best possible job of predicting the matrix values The helpfulness that a particular note is assigned is the notes final score If a notes helpfulness is"}
+{"text": "at least  the note gets shown The core clever idea here is that the polarity terms absorb the properties of a note that cause it to be liked by"}
+{"text": "some users and not others and the helpfulness term only measures the properties that a note has that cause it to be liked by all Thus selecting for"}
+{"text": "helpfulness identifies notes that get crosstribal approval and selects against notes that get cheering from one tribe at the expense of disgust from the other"}
+{"text": "tribe I made a simplified implementation of the basic algorithm you can find it here and are welcome to play around with it Now the above is only a description"}
+{"text": "of the central core of the algorithm In reality there are a lot of extra mechanisms bolted on top Fortunately they are described in the public documentation These mechanisms"}
+{"text": "include the following All in all you get some pretty complicated python code that amounts to  lines stretching across  files But it is all open you can download"}
+{"text": "the note and rating data and run it yourself and see if the outputs correspond to what is actually on Twitter at any given moment Probably the single most important"}
+{"text": "idea in this algorithm that distinguishes it from naively taking an average score from peoples votes is what I call the polarity values The algorithm documentation calls them"}
+{"text": "fu and fn using f for factor because these are the two terms that get multiplied with each other the more general language is in part because of a desire"}
+{"text": "to eventually make fu and fn multidimensional Polarity is assigned to both users and notes The link between user IDs and the underlying Twitter accounts is intentionally kept"}
+{"text": "hidden but notes are public In practice the polarities generated by the algorithm at least for the Englishlanguage data set map very closely to the left vs right"}
+{"text": "political spectrum Here are some examples of notes that have gotten polarities around   Note that I am not cherrypicking here these are literally the"}
+{"text": "first three rows in the scorednotestsv spreadsheet generated by the algorithm when I ran it locally that have a polarity score called coreNoteFactor in the"}
+{"text": "spreadsheet of less than  Now here are some notes that have gotten polarities around  It turns out that many of these are either people talking about Brazilian"}
+{"text": "politics in Portuguese or Tesla fans angrily refuting criticism of Tesla so let me cherrypick a bit to find a few that are not"}
+{"text": "Once again it is worth reminding ourselves that the left vs right divide was not in any way hardcoded into the algorithm it was discovered emergently by the calculation"}
+{"text": "This suggests that if you apply this algorithm in other cultural contexts it could automatically detect what their primary political divides are and bridge across those too Meanwhile notes that"}
+{"text": "get the highest helpfulness look like this This time because these notes are actually shown on Twitter I can just screenshot one directly    And another one"}
+{"text": "The second one touches on highly partisan political themes more directly but its a clear highquality and informative note and so it gets rated highly So"}
+{"text": "all in all the algorithm seems to work and the ability to verify the outputs of the algorithm by running the code seems to work The main thing that struck"}
+{"text": "me when analyzing the algorithm is just how complex it is There is the academic paper version a gradient descent which finds a best fit to a"}
+{"text": "fiveterm vector and matrix equation and then the real version a complicated series of many different executions of the algorithm with lots of arbitrary coefficients along the"}
+{"text": "way Even the academic paper version hides complexity under the hood The equation that its optimizing is a degree equation as theres a degree fu  fn term in the"}
+{"text": "prediction formula and compounding that the cost function measures error squared While optimizing a degree equation over any number of variables almost always has a unique solution which you"}
+{"text": "can calculate with fairly basic linear algebra a degree equation over many variables often has many solutions and so multiple rounds of a gradient descent algorithm may well arrive at"}
+{"text": "different answers Tiny changes to the input may well cause the descent to flip from one local minimum to another significantly changing the output The distinction between this and algorithms"}
+{"text": "that I helped work on such as quadratic funding feels to me like a distinction between an economists algorithm and an engineers algorithm An economists algorithm at its best values"}
+{"text": "being simple being reasonably easy to analyze and having clear mathematical properties that show why its optimal or leastbad for the task that its trying to solve and ideally"}
+{"text": "proves bounds on how much damage someone can do by trying to exploit it An engineers algorithm on the other hand is a result of iterative trial and error seeing"}
+{"text": "what works and what doesnt in the engineers operational context Engineers algorithms are pragmatic and do the job economists algorithms dont go totally crazy when confronted with the unexpected Or"}
+{"text": "as was famously said on a related topic by the esteemed internet philosopher roon aka tszzl    Of course I would say that the"}
+{"text": "theorycel aesthetic side of crypto is necessary precisely to distinguish protocols that are actually trustless from janky constructions that look fine and seem to work well but"}
+{"text": "under the hood require trusting a few centralized actors  or worse actually end up being outright scams Deep learning works when it works but it has inevitable vulnerabilities to"}
+{"text": "all kinds of adversarial machine learning attacks Nerd traps and skyhigh abstraction ladders if done well can be quite robust against them And so one question"}
+{"text": "I have is could we turn Community Notes itself into something thats more like an economist algorithm To give a view of what this would mean in practice lets explore"}
+{"text": "an algorithm I came up with a few years ago for a similar purpose pairwisebounded quadratic funding    The goal of pairwisebounded quadratic funding is to"}
+{"text": "plug a hole in regular quadratic funding where if even two participants collude with each other they can each contribute a very high amount of money to a fake"}
+{"text": "project that sends the money back to them and get a large subsidy that drains the entire pool In pairwise quadratic funding we assign each pair of participants a limited"}
+{"text": "budget M The algorithm walks over all possible pairs of participants and if the algorithm decides to add a subsidy to some project P because both participant A and participant"}
+{"text": "B supported it that subsidy comes out of the budget assigned to the pair A B Hence even if k participants were to collude the amount they could steal"}
+{"text": "from the mechanism is at most k  k  M An algorithm of exactly this form is not very applicable to the Community Notes context because each user makes"}
+{"text": "very few votes on average any two users would have exactly zero votes in common and so the algorithm would learn nothing about users polarities by just looking at"}
+{"text": "each pair of users separately The goal of the machine learning model is precisely to try to fill in the matrix from very sparse source data that cannot be analyzed"}
+{"text": "in this way directly But the challenge of this approach is that it takes extra effort to do it in a way that does not make the result highly volatile"}
+{"text": "in the face of a few bad votes One thing that we could do is analyze whether or not the Community Notes algorithm as is actually manages to fight polarization"}
+{"text": "at all  that is whether or not it actually does any better than a naive voting algorithm Naive voting algorithms already fight polarization to some limited extent a"}
+{"text": "post with  upvotes and  downvotes does worse than a post that just gets the  upvotes But does Community Notes do better than that Looking"}
+{"text": "at the algorithm abstractly its hard to tell Why wouldnt a highaveragerating but polarizing post get a strong polarity and a high helpfulness"}
+{"text": "The idea is that polarity is supposed to absorb the properties of a note that cause it to get a lot of votes if those votes are conflicting but does"}
+{"text": "it actually do that To check this I ran my own simplified implementation for  rounds The average results were In this test Good notes received a rating of"}
+{"text": "from users in the same political tribe and  from users in the opposite political tribe and Good but extra polarizing notes received a rating of  from"}
+{"text": "sametribe users and  from oppositetribe users Same average but different polarity And it seems to actually be the case that Good notes get a"}
+{"text": "higher average helpfulness than Good but extra polarizing notes One other benefit of having something closer to an economists algorithm would be having a clearer story for how"}
+{"text": "the algorithm is penalizing polarization We can see some of how this works out by looking at one specific situation About a month ago Ian Bremmer complained"}
+{"text": "that a highly critical Community Note that was added to a tweet by a Chinese government official had been removed   The note which is now no longer visible"}
+{"text": "Screenshot by Ian Bremmer  This is heavy stuff Its one thing to do mechanism design in a nice sandbox Ethereum community environment where the largest complaint"}
+{"text": "is  going to a polarizing Twitter influencer Its another to do it for political and geopolitical questions that affect many millions of people and where everyone often"}
+{"text": "quite understandably is assuming maximum bad faith But if mechanism designers want to have a significant impact into the world engaging with these highstakes environments is ultimately necessary In"}
+{"text": "the case of Twitter there is a clear reason why one might suspect centralized manipulation to be behind the Notes removal Elon has a lot of business interests in China"}
+{"text": "and so there is a possibility that Elon forced the Community Notes team to interfere with the algorithms outputs and delete this specific one Fortunately the algorithm is open source"}
+{"text": "and verifiable so we can actually look under the hood Lets do that The URL of the original tweet is"}
+{"text": "httpstwittercomMFAChinastatus The number at the end  is the tweet ID We can search for that in the downloadable data and"}
+{"text": "identify the specific row in the spreadsheet that has the above note    Here we get the ID of the note itself  We then search for that"}
+{"text": "in the scorednotestsv and notestatushistorytsv files generated by running the algorithm We get     The second column in the first"}
+{"text": "output is the notes current rating The second output shows the notes history its current status is in the seventh column NEEDSMORERATINGS and the first"}
+{"text": "status thats not NEEDSMORERATINGS that it received earlier on is in the fifth column CURRENTLYRATEDHELPFUL Hence we see that the"}
+{"text": "algorithm itself first showed the note and then removed it once its rating dropped somewhat  seemingly no centralized intervention involved We can see this another way by looking at"}
+{"text": "the votes themselves We can scan the ratingstsv file to isolate all the ratings for this note and see how many rated HELPFUL vs"}
+{"text": "NOTHELPFUL    But if you sort them by timestamp and look at the first  votes you see  HELPFUL votes and"}
+{"text": "NOTHELPFUL votes And so we see the same conclusion the notes initial audience viewed the note more favorably then the notes later audience and so its rating"}
+{"text": "started out higher and dropped lower over time Unfortunately the exact story of how the note changed status is complicated to explain its not a simple matter of before the"}
+{"text": "rating was above  now its below  so it got dropped Rather the high volume of NOTHELPFUL replies triggered one of the outlier conditions increasing the"}
+{"text": "helpfulness score that the note needs to stay over the threshold This is a good learning opportunity for another lesson making a credibly neutral algorithm truly credible requires"}
+{"text": "keeping it simple If a note moves from being accepted to not being accepted there should be a simple and legible story as to why Of course there is"}
+{"text": "a totally different way in which this vote could have been manipulated brigading Someone who sees a note that they disapprove of could call upon a highly engaged"}
+{"text": "community or worse a mass of fake accounts to rate it NOTHELPFUL and it may not require that many votes to drop the note from being seen as"}
+{"text": "helpful to being seen as polarized Properly minimizing the vulnerability of this algorithm to such coordinated attacks will require a lot more analysis and work One possible improvement"}
+{"text": "would be not allowing any user to vote on any note but instead using the For you algorithmic feed to randomly allocate notes to raters and only allow"}
+{"text": "raters to rate those notes that they have been allocated to The main criticism of Community Notes that I have seen is basically that it does not do enough"}
+{"text": "Two recent articles that I have seen make this point Quoting one The program is severely hampered by the fact that for a Community Note to be public"}
+{"text": "it has to be generally accepted by a consensus of people from all across the political spectrum It has to have ideological consensus he said That means people on the"}
+{"text": "left and people on the right have to agree that that note must be appended to that tweet Essentially it requires a crossideological agreement on truth and in"}
+{"text": "an increasingly partisan environment achieving that consensus is almost impossible he said This is a difficult issue but ultimately I come down on the side that it is better to"}
+{"text": "let ten misinformative tweets go free than it is to have one tweet covered by a note that judges it unfairly We have seen years of factchecking"}
+{"text": "that is brave and does come from the perspective of well actually we know the truth and we know that one side lies much more often than the other And"}
+{"text": "what happened as a result   Honestly some pretty widespread distrust of factchecking as a concept One strategy here is to say ignore the haters remember that"}
+{"text": "the fact checking experts really do know the facts better than any voting system and stay the course But going allin on this approach seems risky There is value"}
+{"text": "in building crosstribal institutions that are at least somewhat respected by everyone As with William Blackstones dictum and the courts it feels to me"}
+{"text": "that maintaining such respect requires a system that commits far more sins of omission than it does sins of commission And so it seems valuable to me that there is"}
+{"text": "at least one major organization that is taking this alternate path and treating its rare crosstribal respect as a resource to be cherished and built upon"}
+{"text": "Another reason why I think it is okay for Community Notes to be conservative is that I do not think it is the goal for every misinformative tweet"}
+{"text": "or even most misinformative tweets to receive a corrective note Even if less than one percent of misinformative tweets get a note providing context or correcting"}
+{"text": "them Community Notes is still providing an exceedingly valuable service as an educational tool The goal is not to correct everything rather the goal is to remind people that multiple"}
+{"text": "perspectives exist that certain kinds of posts that look convincing and engaging in isolation are actually quite incorrect and you yes you can often go do a basic internet search"}
+{"text": "to verify that its incorrect Community Notes cannot be and is not meant to be a miracle cure that solves all problems in public epistemology Whatever problems it"}
+{"text": "does not solve there is plenty of room for other mechanisms whether newfangled gadgets such as prediction markets or good oldfashioned organizations hiring fulltime"}
+{"text": "staff with domain expertise to try to fill in the gaps Community Notes in addition to being a fascinating social media experiment is also an instance of a fascinating new"}
+{"text": "and emerging genre of mechanism design mechanisms that intentionally try to identify polarization and favor things that bridge across divides rather than perpetuate them The two other things in"}
+{"text": "this category that I know about are i pairwise quadratic funding which is being used in Gitcoin Grants and ii Polis a discussion tool that uses clustering algorithms"}
+{"text": "to help communities identify statements that are commonly wellreceived across people who normally have different viewpoints This area of mechanism design is valuable and I hope that we can"}
+{"text": "see a lot more academic work in this field Algorithmic transparency of the type that Community Notes offers is not quite fullon decentralized social media  if you"}
+{"text": "disagree with how Community Notes works theres no way to go see a view of the same content with a different algorithm But its the closest that"}
+{"text": "verylargescale applications are going to get within the next couple of years and we can see that it provides a lot of value already both by preventing"}
+{"text": "centralized manipulation and by ensuring that platforms that do not engage in such manipulation can get proper credit for doing so I look forward to seeing both Community Notes and"}
+{"text": "hopefully many more algorithms of a similar spirit develop and grow over the next decadeSpecial thanks to the Worldcoin team the Proof of Humanity community and Andrew Miller"}
+{"text": "for discussion One of the trickier but potentially one of the most valuable gadgets that people in the Ethereum community have been trying to build is a decentralized"}
+{"text": "proofofpersonhood solution Proof of personhood aka the uniquehuman problem is a limited form of realworld identity that asserts that a given registered"}
+{"text": "account is controlled by a real person and a different real person from every other registered account ideally without revealing which real person it is There have been a few"}
+{"text": "efforts at tackling this problem Proof of Humanity BrightID Idena and Circles come up as examples Some of them come with their own applications often a"}
+{"text": "UBI token and some have found use in Gitcoin Passport to verify which accounts are valid for quadratic voting Zeroknowledge tech like Sismo adds"}
+{"text": "privacy to many of these solutions More recently we have seen the rise of a much larger and more ambitious proofofpersonhood project Worldcoin"}
+{"text": "Worldcoin was cofounded by Sam Altman who is best known for being the CEO of OpenAI The philosophy behind the project is simple AI is going"}
+{"text": "to create a lot of abundance and wealth for humanity but it also may kill very many peoples jobs and make it almost impossible to tell who even is a"}
+{"text": "human and not a bot and so we need to plug that hole by i creating a really good proofofpersonhood system so that humans can"}
+{"text": "prove that they actually are humans and ii giving everyone a UBI Worldcoin is unique in that it relies on highly sophisticated biometrics scanning each users iris"}
+{"text": "using a piece of specialized hardware called the Orb    The goal is to produce a large number of these Orbs and widely distribute them around the"}
+{"text": "world and put them in public places to make it easy for anyone to get an ID To Worldcoins credit they have also committed to decentralize over time"}
+{"text": "At first this means technical decentralization being an L on Ethereum using the Optimism stack and protecting users privacy with ZKSNARKs and other cryptographic"}
+{"text": "techniques Later on it includes decentralizing governance of the system itself Worldcoin has been criticized for privacy and security concerns around the Orb design issues in its coin"}
+{"text": "and for ethical issues around some choices that the company has made Some of the criticisms are highly specific focusing on decisions made by the project that could easily have"}
+{"text": "been made in another way  and indeed that the Worldcoin project itself may be willing to change Others however raise the more fundamental concern of whether or not"}
+{"text": "biometrics  not just the eyescanning biometrics of Worldcoin but also the simpler facevideouploads and verification games used in Proof of Humanity"}
+{"text": "and Idena  are a good idea at all And still others criticize proof of personhood in general Risks include unavoidable privacy leaks further erosion of"}
+{"text": "peoples ability to navigate the internet anonymously coercion by authoritarian governments and the potential impossibility of being secure at the same time as being decentralized    This"}
+{"text": "post will talk about these issues and go through some arguments that can help you decide whether or not bowing down and scanning your eyes or face or voice"}
+{"text": "or before our new spherical overlords is a good idea and whether or not the natural alternatives  either using socialgraphbased proof of personhood or giving"}
+{"text": "up on proof of personhood entirely  are any better The simplest way to define a proofofpersonhood system is it creates a list of"}
+{"text": "public keys where the system guarantees that each key is controlled by a unique human In other words if youre a human you can put one key on the list"}
+{"text": "but you cant put two keys on the list and if youre a bot you cant put any keys on the list Proof of personhood is valuable because it"}
+{"text": "solves a lot of antispam and anticoncentrationofpower problems that many people have in a way that avoids dependence on centralized authorities and reveals the"}
+{"text": "minimal information possible If proof of personhood is not solved decentralized governance including microgovernance like votes on social media posts becomes much easier to capture by"}
+{"text": "very wealthy actors including hostile governments Many services would only be able to prevent denialofservice attacks by setting a price for access and sometimes a price high enough"}
+{"text": "to keep out attackers is also too high for many lowerincome legitimate users Many major applications in the world today deal with this issue by using governmentbacked"}
+{"text": "identity systems such as credit cards and passports This solves the problem but it makes large and perhaps unacceptable sacrifices on privacy and can be trivially attacked by governments"}
+{"text": "themselves    How many proof of personhood proponents see the twosided risk that we are facing Image source  In many"}
+{"text": "proofofpersonhood projects  not just Worldcoin but also Proof of Humanity Circles and others  the flagship application is a builtin"}
+{"text": "Nperperson token sometimes called a UBI token Each user registered in the system receives some fixed quantity of tokens each day or hour or week But there"}
+{"text": "are plenty of other applications In many of these cases the common thread is a desire to create mechanisms that are open and democratic avoiding both centralized control by a"}
+{"text": "projects operators and domination by its wealthiest users The latter is especially important in decentralized governance In many of these cases existing solutions today rely on some combination of i"}
+{"text": "highly opaque AI algorithms that leave lots of room to undetectably discriminate against users that the operators simply do not like and ii centralized IDs aka KYC"}
+{"text": "An effective proofofpersonhood solution would be a much better alternative achieving the security properties that those applications need without the pitfalls of the existing centralized"}
+{"text": "approaches There are two main forms of proof of personhood socialgraphbased and biometric Socialgraph based proof of personhood relies on some form of"}
+{"text": "vouching if Alice Bob Charlie and David are all verified humans and they all say that Emily is a verified human then Emily is probably also a verified"}
+{"text": "human Vouching is often enhanced with incentives if Alice says that Emily is a human but it turns out that she is not then Alice and Emily may"}
+{"text": "both get penalized Biometric proof of personhood involves verifying some physical or behavioral trait of Emily that distinguishes humans from bots and individual humans from each"}
+{"text": "other Most projects use a combination of the two techniques The four systems I mentioned at the beginning of the post work roughly as follows Each Worldcoin user installs"}
+{"text": "an app on their phone which generates a private and public key much like an Ethereum wallet They then go inperson to visit an Orb The user stares into"}
+{"text": "the Orbs camera and at the same time shows the Orb a QR code generated by their Worldcoin app which contains their public key The Orb scans the"}
+{"text": "users eyes and uses complicated hardware scanning and machinelearned classifiers to verify that If both scans pass the Orb signs a message approving a specialized hash of the"}
+{"text": "users iris scan The hash gets uploaded to a database  currently a centralized server intended to be replaced with a decentralized onchain system once they are sure the"}
+{"text": "hashing mechanism works The system does not store full iris scans it only stores hashes and these hashes are used to check for uniqueness From that point forward the user"}
+{"text": "has a World ID A World ID holder is able to prove that they are a unique human by generating a ZKSNARK proving that they hold the"}
+{"text": "private key corresponding to a public key in the database without revealing which key they hold Hence even if someone rescans your iris they will not be able to"}
+{"text": "see any actions that you have taken There are four major risks that immediately come to mind Its important to distinguish between i issues specific to choices made by"}
+{"text": "Worldcoin ii issues that any biometric proof of personhood will inevitably have and iii issues that any proof of personhood in general will have For example"}
+{"text": "signing up to Proof of Humanity means publishing your face on the internet Joining a BrightID verification party doesnt quite do that but still exposes who you are"}
+{"text": "to a lot of people And joining Circles publicly exposes your social graph Worldcoin is significantly better at preserving privacy than either of those On the other hand"}
+{"text": "Worldcoin depends on specialized hardware which opens up the challenge of trusting the orb manufacturers to have constructed the orbs correctly  a challenge which has no parallels in"}
+{"text": "Proof of Humanity BrightID or Circles Its even conceivable that in the future someone other than Worldcoin will create a different specializedhardware solution that has different"}
+{"text": "tradeoffs The most obvious and greatest potential privacy leak that any proofofpersonhood system has is linking each action that a person takes to a"}
+{"text": "realworld identity This data leak is very large arguably unacceptably large but fortunately it is easy to solve with zero knowledge proof technology Instead of directly making"}
+{"text": "a signature with a private key whose corresponding public key is in the database a user could make a ZKSNARK proving that they own the private key"}
+{"text": "whose corresponding public key is somewhere in the database without revealing which specific key they have This can be done generically with tools like Sismo see here for"}
+{"text": "the Proof of Humanityspecific implementation and Worldcoin has its own builtin implementation Its important to give cryptonative proof of personhood credit here they actually care"}
+{"text": "about taking this basic step to provide anonymization whereas basically all centralized identity solutions do not A more subtle but still important privacy leak is the mere existence of"}
+{"text": "a public registry of biometric scans In the case of Proof of Humanity this is a lot of data you get a video of each Proof of Humanity participant"}
+{"text": "making it very clear to anyone in the world who cares to investigate who all the Proof of Humanity participants are In the case of Worldcoin the leak is"}
+{"text": "much more limited the Orb locally computes and publishes only a hash of each persons iris scan This hash is not a regular hash like SHA rather it is a"}
+{"text": "specialized algorithm based on machinelearned Gabor filters that deals with the inexactness inherent in any biometric scan and ensures that successive hashes taken of"}
+{"text": "the same persons iris have similar outputs    Blue percent of bits that differ between two scans of the same persons iris Orange percent of bits that differ"}
+{"text": "between two scans of two different peoples irises  These iris hashes leak only a small amount of data If an adversary can forcibly or secretly scan your iris"}
+{"text": "then they can compute your iris hash themselves and check it against the database of iris hashes to see whether or not you participated in the system This ability to"}
+{"text": "check whether or not someone signed up is necessary for the system itself to prevent people from signing up multiple times but theres always the possibility that it will somehow"}
+{"text": "be abused Additionally there is the possibility that the iris hashes leak some amount of medical data sex ethnicity perhaps medical conditions but this leak is far smaller than what"}
+{"text": "could be captured by pretty much any other mass datagathering system in use today eg even street cameras On the whole to me the privacy of storing iris"}
+{"text": "hashes seems sufficient If others disagree with this judgement and decide that they want to design a system with even more privacy there are two ways to do so Unfortunately"}
+{"text": "these techniques are not applicable to Proof of Humanity because Proof of Humanity requires the full video of each participant to be publicly available so that it can be challenged"}
+{"text": "if there are signs that it is fake including AIgenerated fakes and in such cases investigated in more detail On the whole despite the dystopian vibez"}
+{"text": "of staring into an Orb and letting it scan deeply into your eyeballs it does seem like specialized hardware systems can do quite a decent job of protecting privacy"}
+{"text": "However the flip side of this is that specialized hardware systems introduce much greater centralization concerns Hence we cypherpunks seem to be stuck in a bind"}
+{"text": "we have to trade off one deeplyheld cypherpunk value against another Specialized hardware introduces accessibility concerns because well specialized hardware is not very accessible"}
+{"text": "Somewhere between  and  of subSaharan Africans now have smartphones and this seems to be projected to increase to  by  But while there"}
+{"text": "are billions of smartphones there are only a few hundred Orbs Even with much higherscale distributed manufacturing it would be hard to get to a world where"}
+{"text": "theres an Orb within five kilometers of everyone    But to the teams credit they have been trying  It is also worth noting that many other forms"}
+{"text": "of proof of personhood have accessibility problems that are even worse It is very difficult to join a socialgraphbased proofofpersonhood system unless"}
+{"text": "you already know someone who is in the social graph This makes it very easy for such systems to remain restricted to a single community in a single country Even"}
+{"text": "centralized identity systems have learned this lesson Indias Aadhaar ID system is biometricbased as that was the only way to quickly onboard its massive population while"}
+{"text": "avoiding massive fraud from duplicate and fake accounts resulting in huge cost savings though of course the Aadhaar system as a whole is far weaker on privacy than anything"}
+{"text": "being proposed on a large scale within the crypto community The bestperforming systems from an accessibility perspective are actually systems like Proof of Humanity which you can sign"}
+{"text": "up to using only a smartphone  though as we have seen and as we will see such systems come with all kinds of other tradeoffs There are three"}
+{"text": "Any proofofpersonhood system must contend with  perhaps with the exception of systems where the set of accepted IDs is completely subjective If a system"}
+{"text": "uses incentives denominated in outside assets eg ETH USDC DAI then it cannot be fully subjective and so governance risks become unavoidable  is a much bigger"}
+{"text": "risk for Worldcoin than for Proof of Humanity or BrightID because Worldcoin depends on specialized hardware and other systems do not  is a risk particularly in"}
+{"text": "logically centralized systems where there is a single system doing the verification unless all of the algorithms are opensource and we have an assurance that they are actually running"}
+{"text": "the code that they claim they are For systems that rely purely on users verifying other users like Proof of Humanity it is not a risk Currently a"}
+{"text": "Worldcoinaffiliated entity called Tools for Humanity is the only organization that is making Orbs However the Orbs source code is mostly public you can"}
+{"text": "see the hardware specs in this github repository and other parts of the source code are expected to be published soon The license is another one of those shared source"}
+{"text": "but not technically open source until four years from now licenses similar to the Uniswap BSL except in addition to preventing forking it also prevents what"}
+{"text": "they consider unethical behavior  they specifically list mass surveillance and three international civil rights declarations The teams stated goal is to allow and encourage other organizations to create"}
+{"text": "Orbs and over time transition from Orbs being created by Tools for Humanity to having some kind of DAO that approves and manages which organizations can make"}
+{"text": "Orbs that are recognized by the system There are two ways in which this design can fail To make the system more robust against bad Orb manufacturers the"}
+{"text": "Worldcoin team is proposing to perform regular audits on Orbs verifying that they are built correctly and key hardware components were built according to specs and were not"}
+{"text": "tampered with after the fact This is a challenging task its basically something like the IAEA nuclear inspections bureaucracy but for Orbs The hope is that even"}
+{"text": "a very imperfect implementation of an auditing regime could greatly cut down on the number of fake Orbs To limit the harm caused by any bad Orb that does"}
+{"text": "slip through it makes sense to have a second mitigation World IDs registered with different Orb manufacturers and ideally with different Orbs should be distinguishable from each other"}
+{"text": "Its okay if this information is private and only stored on the World ID holders device but it does need to be provable on demand This makes it possible"}
+{"text": "for the ecosystem to respond to inevitable attacks by removing individual Orb manufacturers and perhaps even individual Orbs from the whitelist ondemand If we see the North Korea"}
+{"text": "government going around and forcing people to scan their eyeballs those Orbs and any accounts produced by them could be immediately retroactively disabled In addition to issues"}
+{"text": "specific to Worldcoin there are concerns that affect proofofpersonhood designs in general The major ones that I can think of are  is specific"}
+{"text": "to biometric proofofpersonhood systems  and  are common to both biometric and nonbiometric designs  is also common to both"}
+{"text": "though the techniques that are required would be quite different in both cases in this section I will focus on the issues in the biometric case These are pretty"}
+{"text": "serious weaknesses Some already have been addressed in existing protocols others can be addressed with future improvements and still others seem to be fundamental limitations This is significantly less of"}
+{"text": "a risk for Worldcoin than it is for Proof of Humanitylike systems an inperson scan can examine many features of a person and is quite hard to"}
+{"text": "fake compared to merely deepfaking a video Specialized hardware is inherently harder to fool than commodity hardware which is in turn harder to fool than digital algorithms"}
+{"text": "verifying pictures and videos that are sent remotely Could someone Dprint something that can fool even specialized hardware eventually Probably I expect that at some point we will see"}
+{"text": "growing tensions between the goal of keeping the mechanism open and keeping it secure opensource AI algorithms are inherently more vulnerable to adversarial machine learning Blackbox algorithms"}
+{"text": "are more protected but its hard to tell that a blackbox algorithm was not trained to include backdoors Perhaps ZKML technologies could give us the best"}
+{"text": "of both worlds Though at some point in the even further future it is likely that even the best AI algorithms will be fooled by the best Dprinted fake"}
+{"text": "people However from my discussions with both the Worldcoin and Proof of Humanity teams it seems like at the present moment neither protocol is yet seeing significant deep fake"}
+{"text": "attacks for the simple reason that hiring real lowwage workers to sign up on your behalf is quite cheap and easy In the short term preventing this kind"}
+{"text": "of outsourcing is difficult because most people in the world are not even aware of proofofpersonhood protocols and if you tell them to hold up"}
+{"text": "a QR code and scan their eyes for  they will do that Once more people are aware of what proofofpersonhood protocols are a fairly"}
+{"text": "simple mitigation becomes possible allowing people who have a registered ID to reregister canceling the previous ID This makes ID selling much less credible because someone who"}
+{"text": "sells you their ID can just go and reregister canceling the ID that they just sold However getting to this point requires the protocol to be very"}
+{"text": "widely known and Orbs to be very widely accessible to make ondemand registration practical This is one of the reasons why having a UBI coin integrated into"}
+{"text": "a proofofpersonhood system is valuable a UBI coin provides an easily understandable incentive for people to i learn about the protocol and sign up"}
+{"text": "and ii immediately reregister if they register on behalf of someone else Reregistration also prevents phone hacking This depends on what kind of coercion we are"}
+{"text": "talking about Possible forms of coercion include    All your UBI and voting power are belong to us Image source  Especially in the hands of"}
+{"text": "unsophisticated users it seems quite tough to outright prevent these situations Users could leave their country to reregister at an Orb in a safer country"}
+{"text": "but this is a difficult process and high cost In a truly hostile legal environment seeking out an independent Orb seems too difficult and risky What is feasible is making"}
+{"text": "this kind of abuse more annoying to implement and detectable The Proof of Humanity approach of requiring a person to speak a specific phrase when registering is a good"}
+{"text": "example it may be enough to prevent hidden scanning requiring coercion to be much more blatant and the registration phrase could even include a statement confirming that the respondent knows"}
+{"text": "that they have the right to reregister independently and may get UBI coin or other rewards If coercion is detected the devices used to perform coercive"}
+{"text": "registrations en masse could have their access rights revoked To prevent applications linking peoples current and previous IDs and attempting to leave permanent records the default proof of personhood"}
+{"text": "app could lock the users key in trusted hardware preventing any application from using the key directly without the anonymizing ZKSNARK layer in between If a"}
+{"text": "government or application developer wants to get around this they would need to mandate the use of their own custom app With a combination of these techniques and active"}
+{"text": "vigilance locking out those regimes that are truly hostile and keeping honest those regimes that are merely mediumbad as much of the world is seems possible This can"}
+{"text": "be done either by a project like Worldcoin or Proof of Humanity maintaining its own bureaucracy for this task or by revealing more information about how an ID was"}
+{"text": "registered eg in Worldcoin which Orb it came from and leaving this classification task to the community Renting out your ID is not prevented by reregistration"}
+{"text": "This is okay in some applications the cost of renting out your right to collect the days share of UBI coin is going to be just the value of"}
+{"text": "the days share of UBI coin But in applications such as voting easy vote selling is a huge problem Systems like MACI can prevent you from credibly"}
+{"text": "selling your vote by allowing you to later cast another vote that invalidates your previous vote in such a way that no one can tell whether or not you"}
+{"text": "in fact cast such a vote However if the briber controls which key you get at registration time this does not help I see two solutions here"}
+{"text": "Socialgraphbased systems may actually perform better here because they can create local decentralized registration processes automatically as a byproduct of how they work Aside from biometric"}
+{"text": "approaches the main other contender for proof of personhood so far has been socialgraphbased verification Socialgraphbased verification systems all operate on the same principle if"}
+{"text": "there are a whole bunch of existing verified identities that all attest to the validity of your identity then you probably are valid and should also get verified status"}
+{"text": "If only a few real users accidentally or maliciously verify fake users then you can use basic graphtheory techniques to put an upper bound on how"}
+{"text": "many fake users get verified by the system Source httpswwwsciencedirectcomsciencearticleabspiiS  Proponents of socialgraphbased verification often"}
+{"text": "describe it as being a better alternative to biometrics for a few reasons My perspective on these arguments is that I largely agree with them These are genuine advantages"}
+{"text": "of socialgraphbased approaches and should be taken seriously However its worth also taking into account the weaknesses of socialgraphbased approaches In principle proof of personhood"}
+{"text": "is compatible with all kinds of pseudonymity Applications could be designed in such a way that someone with a single proof of personhood ID can create up"}
+{"text": "to five profiles within the application leaving room for pseudonymous accounts One could even use quadratic formulas N accounts for a cost of N\u00c2 But will they A"}
+{"text": "pessimist however might argue that it is naive to try to create a more privacyfriendly form of ID and hope that it will actually get adopted in the"}
+{"text": "right way because the powersthatbe are not privacyfriendly and if a powerful actor gets a tool that could be used to get much more information about"}
+{"text": "a person they will use it that way In such a world the argument goes the only realistic approach is unfortunately to throw sand in the gears of any identity"}
+{"text": "solution and defend a world with full anonymity and digital islands of hightrust communities I see the reasoning behind this way of thinking but I worry that such an"}
+{"text": "approach would even if successful lead to a world where theres no way for anyone to do anything to counteract wealth concentration and governance centralization because one person"}
+{"text": "could always pretend to be ten thousand Such points of centralization would in turn be easy for the powersthatbe to capture Rather I would favor a"}
+{"text": "moderate approach where we vigorously advocate for proofofpersonhood solutions to have strong privacy potentially if desired even include a N accounts for N\u00c2 mechanism"}
+{"text": "at protocol layer and create something that has privacyfriendly values and has a chance of getting accepted by the outside world There is no ideal form of proof of"}
+{"text": "personhood Instead we have at least three different paradigms of approaches that all have their own unique strengths and weaknesses A comparison chart might look as follows"}
+{"text": "What we should ideally do is treat these three techniques as complementary and combine them all As Indias Aadhaar has shown at scale specializedhardware biometrics"}
+{"text": "have their benefits of being secure at scale They are very weak at decentralization though this can be addressed by holding individual Orbs accountable Generalpurpose biometrics"}
+{"text": "can be adopted very easily today but their security is rapidly dwindling and they may only work for another  years Socialgraphbased systems bootstrapped off"}
+{"text": "of a few hundred people who are socially close to the founding team are likely to face constant tradeoffs between completely missing large parts of the world and being"}
+{"text": "vulnerable to attacks within communities they have no visibility into A socialgraphbased system bootstrapped off tens of millions of biometric ID holders however could actually"}
+{"text": "work Biometric bootstrapping may work better shortterm and socialgraphbased techniques may be more robust longterm and take on a larger share of the"}
+{"text": "responsibility over time as their algorithms improve    A possible hybrid path  All of these teams are in a position to make many mistakes and there are"}
+{"text": "inevitable tensions between business interests and the needs of the wider community so its important to exercise a lot of vigilance As a community we can and should push"}
+{"text": "all participants comfort zones on opensourcing their tech demand thirdparty audits and even thirdpartywritten software and other checks and balances We also need more alternatives in"}
+{"text": "each of the three categories At the same time its important to recognize the work already done many of the teams running these systems have shown a willingness to take"}
+{"text": "privacy much more seriously than pretty much any government or major corporaterun identity systems and this is a success that we should build on The problem of making"}
+{"text": "a proofofpersonhood system that is effective and reliable especially in the hands of people distant from the existing crypto community seems quite challenging I definitely"}
+{"text": "do not envy the people attempting the task and it will likely take years to find a formula that works The concept of proofofpersonhood in"}
+{"text": "principle seems very valuable and while the various implementations have their risks not having any proofofpersonhood at all has its risks too a world with"}
+{"text": "no proofofpersonhood seems more likely to be a world dominated by centralized identity solutions money small closed communities or some combination of all three I"}
+{"text": "look forward to seeing more progress on all types of proof of personhood and hopefully seeing the different approaches eventually come together into a coherent wholeSpecial thanks to"}
+{"text": "Yoav Weiss Dan Finlay Martin Koppelmann and the Arbitrum Optimism Polygon Scroll and SoulWallet teams for feedback and review In this post on"}
+{"text": "the Three Transitions I outlined some key reasons why its valuable to start thinking explicitly about L  crossL support wallet security and privacy as necessary basic features"}
+{"text": "of the ecosystem stack rather than building each of these things as addons that can be designed separately by individual wallets This post will focus more directly on the technical"}
+{"text": "aspects of one specific subproblem how to make it easier to read L from L L from L or an L from another L Solving this problem is"}
+{"text": "crucial for implementing an asset  keystore separation architecture but it also has valuable use cases in other areas most notably optimizing reliable crossL calls including use cases"}
+{"text": "like moving assets between L and Ls Once Ls become more mainstream users will have assets across multiple Ls and possibly L as well Once smart contract"}
+{"text": "wallets multisig social recovery or otherwise become mainstream the keys needed to access some account are going to change over time and old keys would need to no longer"}
+{"text": "be valid Once both of these things happen a user will need to have a way to change the keys that have authority to access many accounts which live in"}
+{"text": "many different places without making an extremely high number of transactions Particularly we need a way to handle counterfactual addresses addresses that have not yet been registered in"}
+{"text": "any way onchain but which nevertheless need to receive and securely hold funds We all depend on counterfactual addresses when you use Ethereum for the first time"}
+{"text": "you are able to generate an ETH address that someone can use to pay you without registering the address onchain which would require paying txfees and hence"}
+{"text": "already holding some ETH With EOAs all addresses start off as counterfactual addresses With smart contract wallets counterfactual addresses are still possible largely thanks to"}
+{"text": "CREATE which allows you to have an ETH address that can only be filled by a smart contract that has code matching a particular hash   EIP CREATE"}
+{"text": "address calculation algorithm  However smart contract wallets introduce a new challenge the possibility of access keys changing The address which is a hash of the initcode can only"}
+{"text": "contain the wallets initial verification key The current verification key would be stored in the wallets storage but that storage record does not magically propagate to other Ls If"}
+{"text": "a user has many addresses on many Ls including addresses that because they are counterfactual the L that they are on does not know about then it"}
+{"text": "seems like there is only one way to allow users to change their keys asset  keystore separation architecture Each user has i a keystore contract on L"}
+{"text": "or on one particular L which stores the verification key for all wallets along with the rules for changing the key and ii wallet contracts on L and many"}
+{"text": "Ls which read crosschain to get the verification key    There are two ways to implement this To show the full complexity well explore the most"}
+{"text": "difficult case where the keystore is on one L and the wallet is on a different L If either the keystore on the wallet is on L then"}
+{"text": "only half of this design is needed    Lets assume that the keystore is on Linea and the wallet is on Kakarot A full"}
+{"text": "proof of the keys to the wallet consists of There are two primary tricky implementation questions here There are five major options In terms of infrastructure work required and cost"}
+{"text": "for users I rank them roughly as follows    Aggregation refers to the idea of aggregating all the proofs supplied by users within each block into"}
+{"text": "a big metaproof that combines all of them This is possible for SNARKs and for KZG but not for Merkle branches you can"}
+{"text": "combine Merkle branches a little bit but it only saves you logtxs per block  logtotal number of keystores perhaps  in practice so its"}
+{"text": "probably not worth the cost Aggregation only becomes worth it once the scheme has a substantial number of users so realistically its okay for a version implementation to leave"}
+{"text": "aggregation out and implement that for version  This one is simple follow the diagram in the previous section directly More precisely each proof assuming the maxdifficulty case of"}
+{"text": "proving one L into another L would contain Unfortunately Ethereum state proofs are complicated but there exist libraries for verifying them and if you use these libraries this mechanism is"}
+{"text": "not too complicated to implement The larger problem is cost Merkle proofs are long and Patricia trees are unfortunately x longer than necessary precisely an ideal Merkle proof"}
+{"text": "into a tree holding N objects is   logN bytes long and because Ethereums Patricia trees have  leaves per child proofs for those trees are"}
+{"text": "logN    logN bytes long In a state with roughly  million \u00c2\u00e2 accounts this makes each proof"}
+{"text": "bytes or about  gas plus extra costs for decoding and verifying hashes Two proofs together would end up costing around  to  gas not including signature"}
+{"text": "verification if this is used pertransaction  significantly more than the current base  gas per transaction But the disparity gets worse if the proof is being verified on"}
+{"text": "L Computation inside an L is cheap because computation is done offchain and in an ecosystem with much fewer nodes than L Data on the other hand has"}
+{"text": "to be posted to L Hence the comparison is not  gas vs  gas its  L gas vs  L gas We can calculate what this means by"}
+{"text": "looking at comparisons between L gas costs and L gas costs    L is currently about x more expensive than L for simple sends and x more expensive"}
+{"text": "for token swaps Simple sends are relatively dataheavy but swaps are much more computationally heavy Hence swaps are a better benchmark to approximate cost of L computation vs"}
+{"text": "L computation Taking all this into account if we assume a x cost ratio between L computation cost and L computation cost this seems to imply that putting a"}
+{"text": "Merkle proof on L will cost the equivalent of perhaps fifty regular transactions Of course using a binary Merkle tree can cut costs by x but even still"}
+{"text": "the cost is in most cases going to be too high  and if were willing to make the sacrifice of no longer being compatible with Ethereums current"}
+{"text": "hexary state tree we might as well seek even better options Conceptually the use of ZKSNARKs is also easy to understand you simply replace"}
+{"text": "the Merkle proofs in the diagram above with a ZKSNARK proving that those Merkle proofs exist A ZKSNARK costs  gas of"}
+{"text": "computation and about  bytes compare  gas and  bytes for a basic transaction in the future reducible to  bytes with compression Hence from a computational"}
+{"text": "perspective a ZKSNARK costs x the cost of a basic transaction today and from a data perspective a ZKSNARK costs x as much as"}
+{"text": "a basic transaction today and x what a basic transaction may cost in the future These numbers are a massive improvement over Merkle proofs but they are still quite"}
+{"text": "expensive There are two ways to improve on this i specialpurpose KZG proofs or ii aggregation similar to ERC aggregation but using more fancy math We can"}
+{"text": "look into both Warning this section is much more mathy than other sections This is because were going beyond generalpurpose tools and building something specialpurpose to be"}
+{"text": "cheaper so we have to go under the hood a lot more If you dont like deep math skip straight to the next section First a recap of how"}
+{"text": "KZG commitments work Some key properties that are important to understand are Hence we have a structure where we can just keep adding values to the end of"}
+{"text": "an evergrowing list though with a certain size limit realistically hundreds of millions could be viable We then use that as our data structure to manage i a"}
+{"text": "commitment to the list of keys on each L stored on that L and mirrored to L and ii a commitment to the list of L keycommitments stored"}
+{"text": "on the Ethereum L and mirrored to each L Keeping the commitments updated could either become part of core L logic or it could be implemented without L coreprotocol"}
+{"text": "changes through deposit and withdraw bridges    A full proof would thus require Its actually possible to merge the two KZG proofs into one so we"}
+{"text": "get a total size of only  bytes Note one subtlety because the key list is a list and not a keyvalue map like the state is"}
+{"text": "the key list will have to assign positions sequentially The key commitment contract would contain its own internal registry mapping each keystore to an ID and for each key"}
+{"text": "it would store hashkey address of the keystore instead of just key to unambiguously communicate to other Ls which keystore a particular entry"}
+{"text": "is talking about The upside of this technique is that it performs very well on L The data is  bytes x shorter than a ZKSNARK and"}
+{"text": "waaaay shorter than a Merkle proof The computation cost is largely one size pairing check or about  gas On L data is less important than computation"}
+{"text": "and so unfortunately KZG is somewhat more expensive than Merkle proofs  Verkle trees essentially involve stacking KZG commitments or IPA commitments which can"}
+{"text": "be more efficient and use simpler cryptography on top of each other to store \u00e2\u00e2 values you can make a KZG commitment to a list of"}
+{"text": "\u00c2\u00e2 values each of which itself is a KZG commitment to \u00c2\u00e2 values Verkle trees are being strongly considered for the Ethereum state tree because"}
+{"text": "Verkle trees can be used to hold keyvalue maps and not just lists basically you can make a size\u00c2\u00e2\u00b5\u00e2 tree but start it empty"}
+{"text": "only filling in specific parts of the tree once you actually need to fill them   What a Verkle tree looks like In practice you might give each"}
+{"text": "node a width of   \u00e2 for IPAbased trees or \u00c2\u00e2 for KZGbased trees  Proofs in Verkle trees are somewhat"}
+{"text": "longer than KZG they might be a few hundred bytes long They are also difficult to verify especially if you try to aggregate many proofs into one"}
+{"text": "Realistically Verkle trees should be considered to be like Merkle trees but more viable without SNARKing because of the lower data costs and cheaper with"}
+{"text": "SNARKing because of lower prover costs The largest advantage of Verkle trees is the possibility of harmonizing data structures Verkle proofs could be used"}
+{"text": "directly over L or L state without overlay structures and using the exact same mechanism for L and L Once quantum computers become an issue or once proving Merkle"}
+{"text": "branches becomes efficient enough Verkle trees could be replaced inplace with a binary hash tree with a suitable SNARKfriendly hash function If N users make N transactions"}
+{"text": "or more realistically N ERC UserOperations that need to prove N crosschain claims we can save a lot of gas by aggregating those proofs the builder that"}
+{"text": "would be combining those transactions into a block or bundle that goes into a block can create a single proof that proves all of those claims simultaneously This could mean"}
+{"text": "In all three cases the proofs would only cost a few hundred thousand gas each The builder would need to make one of these on each L for the users"}
+{"text": "in that L hence for this to be useful to build the scheme as a whole needs to have enough usage that there are very often at least a few"}
+{"text": "transactions within the same block on multiple major Ls If ZKSNARKs are used the main marginal cost is simply business logic of passing numbers around"}
+{"text": "between contracts so perhaps a few thousand L gas per user If KZG multiproofs are used the prover would need to add  gas for"}
+{"text": "each keystoreholding L that is used within that block so the marginal cost of the scheme per user would add another  L gas per L not per"}
+{"text": "user on top But these costs are much lower than the costs of not aggregating which inevitably involve over  L gas and hundreds of thousands of L gas"}
+{"text": "per user For Verkle trees you can either use Verkle multiproofs directly adding around  bytes per user or you can make a"}
+{"text": "ZKSNARK of a Verkle multiproof which has similar costs to ZKSNARKs of Merkle branches but is significantly cheaper to prove"}
+{"text": "From an implementation perspective its probably best to have bundlers aggregate crosschain proofs through the ERC account abstraction standard ERC already has a mechanism for builders to aggregate"}
+{"text": "parts of UserOperations in custom ways There is even an implementation of this for BLS signature aggregation which could reduce gas costs on L by x to x"}
+{"text": "depending on what other forms of compression are included   Diagram from a BLS wallet implementation post showing the workflow of BLS aggregate signatures within an earlier"}
+{"text": "version of ERC The workflow of aggregating crosschain proofs will likely look very similar A final possibility and one only usable for L reading L and not L"}
+{"text": "reading L is to modify Ls to let them make static calls to contracts on L directly This could be done with an opcode or a precompile which"}
+{"text": "allows calls into L where you provide the destination address gas and calldata and it returns the output though because these calls are staticcalls they cannot actually change"}
+{"text": "any L state Ls have to be aware of L already to process deposits so there is nothing fundamental stopping such a thing from being implemented it is mainly"}
+{"text": "a technical implementation challenge see this RFP from Optimism to support static calls into L Notice that if the keystore is on L and Ls integrate"}
+{"text": "L staticcall functionality then no proofs are required at all However if Ls dont integrate L staticcalls or if the keystore is on L which it"}
+{"text": "may eventually have to be once L gets too expensive for users to use even a little bit then proofs will be required All of the schemes above require the"}
+{"text": "L to access either the recent L state root or the entire recent L state Fortunately all Ls have some functionality to access the recent L state already This"}
+{"text": "is because they need such a functionality to process messages coming in from L to the L most notably deposits And indeed if an L has a deposit feature then"}
+{"text": "you can use that L asis to move L state roots into a contract on the L simply have a contract on L call the BLOCKHASH opcode and"}
+{"text": "pass it to L as a deposit message The full block header can be received and its state root extracted on the L side However it would be much better"}
+{"text": "for every L to have an explicit way to access either the full recent L state or recent L state roots directly The main challenge with optimizing how Ls"}
+{"text": "receive recent L state roots is simultaneously achieving safety and low latency Additionally in the opposite direction Ls reading L Some of these speeds for trustless crosschain"}
+{"text": "operations are unacceptably slow for many defi use cases for those cases you do need faster bridges with more imperfect security models For the use case of"}
+{"text": "updating wallet keys however longer delays are more acceptable youre not delaying transactions by hours youre delaying key changes Youll just have to keep the old keys around longer"}
+{"text": "If youre changing keys because keys are stolen then you do have a significant period of vulnerability but this can be mitigated eg by wallets having a freeze function"}
+{"text": "Ultimately the best latencyminimizing solution is for Ls to implement direct reading of L state roots in an optimal way where each L block or the"}
+{"text": "state root computation log contains a pointer to the most recent L block so if L reverts L can revert as well Keystore contracts should be placed either"}
+{"text": "on mainnet or on Ls that are ZKrollups and so can quickly commit to L   Blocks of the L chain can have dependencies"}
+{"text": "on not just previous L blocks but also on an L block If L reverts past such a link the L reverts too Its worth noting that this"}
+{"text": "is also how an earlier preDank version of sharding was envisioned to work see here for code  Surprisingly not that much It actually does not"}
+{"text": "even need to be a rollup if its an L or a validium then its okay to hold wallets there as long as you hold keystores either"}
+{"text": "on L or on a ZK rollup The thing that you do need is for the chain to have direct access to Ethereum state roots and a technical"}
+{"text": "and social commitment to be willing to reorg if Ethereum reorgs and hard fork if Ethereum hard forks One interesting research problem is identifying to what extent"}
+{"text": "it is possible for a chain to have this form of connection to multiple other chains eg Ethereum and Zcash Doing it naively is possible your chain could"}
+{"text": "agree to reorg if Ethereum or Zcash reorg and hard fork if Ethereum or Zcash hard fork but then your node operators and your community more"}
+{"text": "generally have double the technical and political dependencies Hence such a technique could be used to connect to a few other chains but at increasing cost Schemes based on"}
+{"text": "ZK bridges have attractive technical properties but they have the key weakness that they are not robust to  attacks or hard forks There may be more clever solutions"}
+{"text": "Ideally we also want to preserve privacy If you have many wallets that are managed by the same keystore then we want to make sure This creates a few"}
+{"text": "issues With SNARKs the solutions are conceptually easy proofs are informationhiding by default and the aggregator needs to produce a recursive SNARK to prove"}
+{"text": "the SNARKs    The main challenge of this approach today is that aggregation requires the aggregator to create a recursive SNARK which is currently quite"}
+{"text": "slow With KZG we can use this work on nonindexrevealing KZG proofs see also a more formalized version of that work in"}
+{"text": "the Caulk paper as a starting point Aggregation of blinded proofs however is an open problem that requires more attention Directly reading L from inside L unfortunately"}
+{"text": "does not preserve privacy though implementing directreading functionality is still very useful both to minimize latency and because of its utility for other applicationsSpecial thanks to Dan"}
+{"text": "Finlay Karl Floersch David Hoffman and the Scroll and SoulWallet teams for feedback and review and suggestions As Ethereum transitions from a young experimental technology into"}
+{"text": "a mature tech stack that is capable of actually bringing an open global and permissionless experience to average users there are three major technical transitions that the stack needs"}
+{"text": "to undergo roughly simultaneously  The ecosystem transition triangle You can only pick  out of   Without the first Ethereum fails because each transaction costs   if"}
+{"text": "we have another bull run and every product aiming for the mass market inevitably forgets about the chain and adopts centralized workarounds for everything Without the second"}
+{"text": "Ethereum fails because users are uncomfortable storing their funds and nonfinancial assets and everyone moves onto centralized exchanges Without the third Ethereum fails because having all transactions and"}
+{"text": "POAPs etc available publicly for literally anyone to see is far too high a privacy sacrifice for many users and everyone moves onto centralized solutions that at least"}
+{"text": "somewhat hide your data These three transitions are crucial for the reasons above But they are also challenging because of the intense coordination involved to properly resolve them Its not"}
+{"text": "just features of the protocol that need to improve in some cases the way that we interact with Ethereum needs to change pretty fundamentally requiring deep changes from applications and"}
+{"text": "wallets In an L scaling world users are going to exist on lots of Ls Are you a member of ExampleDAO which lives on Optimism Then you"}
+{"text": "have an account on Optimism Are you holding a CDP in a stablecoin system on ZkSync Then you have an account on ZkSync"}
+{"text": "Did you once go try some application that happened to live on Kakarot Then you have an account on Kakarot The days of a user having"}
+{"text": "only one address will be gone   I have ETH in four places according to my Brave Wallet view And yes Arbitrum and Arbitrum Nova are different"}
+{"text": "Dont worry it will get more confusing over time  Smart contract wallets add more complexity by making it much more difficult to have the same address across L and"}
+{"text": "the various Ls Today most users are using externally owned accounts whose address is literally a hash of the public key that is used to verify signatures  so"}
+{"text": "nothing changes between L and L With smart contract wallets however keeping one address becomes more difficult Although a lot of work has been done to try to make addresses"}
+{"text": "be hashes of code that can be equivalent across networks most notably CREATE and the ERC singleton factory its difficult to make this work perfectly Some Ls eg type"}
+{"text": "ZKEVMs are not quite EVM equivalent often using Solidity or an intermediate assembly instead preventing hash equivalence And even when you can have hash"}
+{"text": "equivalence the possibility of wallets changing ownership through key changes creates other unintuitive consequences Privacy requires each user to have even more addresses and may even change what kinds"}
+{"text": "of addresses were dealing with If stealth address proposals become widely used instead of each user having only a few addresses or one address per L users might have one"}
+{"text": "address per transaction Other privacy schemes even existing ones such as Tornado Cash change how assets are stored in a different way many users funds are stored in the"}
+{"text": "same smart contract and hence at the same address To send funds to a specific user users will need to rely on the privacy schemes own internal addressing system As"}
+{"text": "weve seen each of the three transitions weaken the one user  one address mental model in different ways and some of these effects feed back into the complexity"}
+{"text": "of executing the transitions Two particular points of complexity are I have coins on Scroll and I want to pay for coffee if the I is literally me the writer"}
+{"text": "of this article then coffee is of course a metonymy for green tea You are selling me the coffee but you are only set up to receive coins"}
+{"text": "on Taiko Wat do There are basically two solutions Of course these solutions can be combined the recipient provides the list of Ls theyre willing to accept"}
+{"text": "and the senders wallet figures out payment which could involve either a direct send if theyre lucky or otherwise a crossL bridging path But this is"}
+{"text": "only one example of a key challenge that the three transitions introduce simple actions like paying someone start to require a lot more information than just a byte address A"}
+{"text": "transition to smart contract wallets is fortunately not a large burden on the addressing system but there are still some technical issues in other parts of the application stack that"}
+{"text": "need to be worked through Wallets will need to be updated to make sure that they do not send only  gas along with a transaction and it will"}
+{"text": "be even more important to ensure that the payment receiving side of a wallet tracks not only ETH transfers from EOAs but also ETH sent by smart contract code"}
+{"text": "Apps that rely on the assumption that address ownership is immutable eg NFTs that ban smart contracts to enforce royalties will have to find other ways of achieving"}
+{"text": "their goals Smart contract wallets will also make some things easier  notably if someone receives only a nonETH ERC token they will be able to use ERC"}
+{"text": "paymasters to pay for gas with that token Privacy on the other hand once again poses major challenges that we have not really dealt with yet The original"}
+{"text": "Tornado Cash did not introduce any of these issues because it did not support internal transfers users could only deposit into the system and withdraw out of it Once"}
+{"text": "you can make internal transfers however users will need to use the internal addressing scheme of the privacy system In practice a users payment information would need to contain both"}
+{"text": "i some kind of spending pubkey a commitment to a secret that the recipient could use to spend and ii some way for the sender to send encrypted information that"}
+{"text": "only the recipient can decrypt to help the recipient discover the payment Stealth address protocols rely on a concept of metaaddresses which work in this way one part of"}
+{"text": "the metaaddress is a blinded version of the senders spending key and another part is the senders encryption key though a minimal implementation could set those two"}
+{"text": "keys to be the same   Schematic overview of an abstract stealth address scheme based on encryption and ZKSNARKs  A key lesson here"}
+{"text": "is that in a privacyfriendly ecosystem a user will have both spending pubkeys and encryption pubkeys and a users payment information will have to include both keys"}
+{"text": "There are also good reasons other than payments to expand in this direction For example if we want Ethereumbased encrypted email users will need to publicly provide"}
+{"text": "some kind of encryption key In EOA world we could reuse account keys for this but in a safe smartcontractwallet world we probably should have more explicit"}
+{"text": "functionality for this This would also help in making Ethereumbased identity more compatible with nonEthereum decentralized privacy ecosystems most notably PGP keys The"}
+{"text": "default way to implement key changes and social recovery in a manyaddressperuser world is to simply have users run the recovery procedure on each address separately This"}
+{"text": "can be done in one click the wallet can include software to execute the recovery procedure across all of a users addresses at the same time However even with such"}
+{"text": "UX simplifications naive multiaddress recovery has three issues Solving these problems is hard Fortunately there is a somewhat elegant solution that performs reasonably well an architecture that"}
+{"text": "separates verification logic and asset holdings    Each user has a keystore contract which exists in one location could either be mainnet or a specific L"}
+{"text": "Users then have addresses on different Ls where the verification logic of each of those addresses is a pointer to the keystore contract Spending from those addresses would"}
+{"text": "require a proof going into the keystore contract showing the current or more realistically very recent spending public key The proof could be implemented in a few ways"}
+{"text": "If we want to avoid making one proof per transaction we can implement a lighter scheme that only requires a crossL proof for recovery Spending from an"}
+{"text": "account would depend on a spending key whose corresponding pubkey is stored within that account but recovery would require a transaction that copies over the current spendingpubkey in"}
+{"text": "the keystore Funds in counterfactual addresses are safe even if your old keys are not activating a counterfactual address to turn it into a working"}
+{"text": "contract would require making a crossL proof to copy over the current spendingpubkey This thread on the Safe forums describes how a similar architecture might work To"}
+{"text": "add privacy to such a scheme then we just encrypt the pointer and we do all of our proving inside ZKSNARKs  With more work eg"}
+{"text": "using this work as a starting point we could also strip out most of the complexity of ZKSNARKs and make a more barebones"}
+{"text": "KZGbased scheme These schemes can get complex On the plus side there are many potential synergies between them For example the concept of keystore contracts"}
+{"text": "could also be a solution to the challenge of addresses mentioned in the previous section if we want users to have persistent addresses that do not change every time the"}
+{"text": "user updates a key we could put stealth metaaddresses encryption keys and other information into the keystore contract and use the address of the keystore contract as"}
+{"text": "a users address Using ENS is expensive Today in June  the situation is not too bad the transaction fee is significant but its still comparable to the"}
+{"text": "ENS domain fee Registering zuzalueth cost me roughly  of which  was transaction fees But if we have another bull market fees will skyrocket"}
+{"text": "Even without ETH price increases gas fees returning to  gwei would raise the tx fee of a domain registration to  And so if we want people to"}
+{"text": "actually use ENS especially for use cases like decentralized social media where users demand nearlyfree registration and the ENS domain fee is not an issue because these"}
+{"text": "platforms offer their users subdomains we need ENS to work on L Fortunately the ENS team has stepped up and ENS on L is actually happening"}
+{"text": "ERC aka the CCIP standard together with ENSIP provide a way to have ENS subdomains on any L automatically be verifiable The CCIP"}
+{"text": "standard requires setting up a smart contract that describes a method for verifying proofs of data on L and a domain eg Optinames uses ecceth can be"}
+{"text": "put under the control of such a contract Once the CCIP contract controls ecceth on L accessing some subdomainecceth will automatically involve finding and verifying"}
+{"text": "a proof eg Merkle branch of the state in L that actually stores that particular subdomain    Actually fetching the proofs involves going to a list"}
+{"text": "of URLs stored in the contract which admittedly feels like centralization though I would argue it really isnt its a ofN trust model invalid proofs get caught by"}
+{"text": "the verification logic in the CCIP contracts callback function and as long as even one of the URLs returns a valid proof youre good The list of URLs could"}
+{"text": "contain dozens of them The ENS CCIP effort is a success story and it should be viewed as a sign that radical reforms of the kind that we"}
+{"text": "need are actually possible But theres a lot more applicationlayer reform that will need to be done A few examples Today wallets are in the business of securing assets"}
+{"text": "Everything lives onchain and the only thing that the wallet needs to protect is the private key that is currently guarding those assets If you change the key you"}
+{"text": "can safely publish your previous private key on the internet the next day In a ZK world however this is no longer true the wallet is not just protecting"}
+{"text": "authentication credentials its also holding your data We saw the first signs of such a world with Zupass the ZKSNARKbased identity system that was"}
+{"text": "used at Zuzalu Users had a private key that they used to authenticate to the system which could be used to make basic proofs like prove Im a"}
+{"text": "Zuzalu resident without revealing which one But the Zupass system also began to have other apps built on top most notably stamps Zupasss"}
+{"text": "version of POAPs   One of my many Zupass stamps confirming that I am a proud member of Team Cat  The key feature that"}
+{"text": "stamps offer over POAPs is that stamps are private you hold the data locally and you only ZKprove a stamp or some computation over the stamps"}
+{"text": "to someone if you want them to have that information about you But this creates added risk if you lose that information you lose your stamps Of course the problem"}
+{"text": "of holding data can be reduced to the problem of holding a single encryption key some third party or even the chain can hold an encrypted copy of the data"}
+{"text": "This has the convenient advantage that actions you take dont change the encryption key and so do not require any interactions with the system holding your encryption key safe But"}
+{"text": "even still if you lose your encryption key you lose everything And on the flip side if someone sees your encryption key they see everything that was encrypted to that"}
+{"text": "key Zupasss defacto solution was to encourage people to store their key on multiple devices eg laptop and phone as the chance that they would"}
+{"text": "lose access to all devices at the same time is tiny We could go further and use secret sharing to store the key split between multiple guardians This kind of"}
+{"text": "social recovery via MPC is not a sufficient solution for wallets because it means that not only current guardians but also previous guardians could collude to steal your assets"}
+{"text": "which is an unacceptably high risk But privacy leaks are generally a lower risk than total asset loss and someone with a highprivacydemanding use case"}
+{"text": "could always accept a higher risk of loss by not backing up the key associated with those privacydemanding actions To avoid overwheming the user with a"}
+{"text": "byzantine system of multiple recovery paths wallets that support social recovery will likely need to manage both recovery of assets and recovery of encryption keys One of the"}
+{"text": "common threads of these changes is that the concept of an address a cryptographic identifier that you use to represent you onchain will have to radically change Instructions for"}
+{"text": "how to interact with me would no longer just be an ETH address they would have to be in some form some combination of multiple addresses on multiple Ls"}
+{"text": "stealth metaaddresses encryption keys and other data One way to do this is to make ENS your identity your ENS record could just contain all of this"}
+{"text": "information and if you send someone bobeth or bobecceth or they could look up and see everything about how to pay and interact with you including"}
+{"text": "in the more complicated crossdomain and privacypreserving ways But this ENScentric approach has two weaknesses One possible solution is to put more"}
+{"text": "things into the keystore contract mentioned in the architecture earlier in this post The keystore contract could contain all of the various information about you and how to"}
+{"text": "interact with you and with CCIP some of that info could be offchain and users would use their keystore contract as their primary identifier But the actual"}
+{"text": "assets that they receive would be stored in all kinds of different places Keystore contracts are not tied to a name and they are counterfactualfriendly you"}
+{"text": "can generate an address that can provably only be initialized by a keystore contract that has certain fixed initial parameters Another category of solutions has to do with"}
+{"text": "abandoning the concept of userfacing addresses altogether in a similar spirit to the Bitcoin payment protocol One idea is to rely more heavily on direct communication channels between"}
+{"text": "the sender and the recipient for example the sender could send a claim link either as an explicit URL or a QR code which the recipient could use to accept"}
+{"text": "the payment however they wish    Regardless of whether the sender or the recipient acts first greater reliance on wallets directly generating uptodate payment information in real"}
+{"text": "time could reduce friction That said persistent identifiers are convenient especially with ENS and the assumption of direct communication between sender and recipient is a really tricky one in"}
+{"text": "practice and so we may end up seeing a combination of different techniques In all of these designs keeping things both decentralized and understandable to users is paramount We need"}
+{"text": "to make sure that users have easy access to an uptodate view of what their current assets are and what messages have been published that are intended for them"}
+{"text": "These views should depend on open tools not proprietary solutions It will take hard work to avoid the greater complexity of payment infrastructure from turning into an opaque tower of"}
+{"text": "abstraction where developers have a hard time making sense of whats going on and adapting it to new contexts Despite the challenges achieving scalability wallet security and privacy for regular"}
+{"text": "users is crucial for Ethereums future It is not just about technical feasibility but about actual accessibility for regular users We need to rise to meet this"}
+{"text": "challengeSpecial thanks to Karl Floersch and Justin Drake for feedback and review The Ethereum networks consensus is one of the most highly secured cryptoeconomic systems"}
+{"text": "out there  million ETH  billion worth of validators finalize a block every  minutes running many different implementations of the protocol for redundancy And if the"}
+{"text": "cryptoeconomic consensus fails whether due to a bug or an intentional  attack a vast community of many thousands of developers and many more users are watching carefully"}
+{"text": "to make sure the chain recovers correctly Once the chain recovers protocol rules ensure that attackers will likely be heavily penalized Over the years there have been"}
+{"text": "a number of ideas usually at the thought experiment stage to also use the Ethereum validator set and perhaps even the Ethereum social consensus for other purposes The purpose of"}
+{"text": "this post will be to explain in detail the argument why in my view a certain subset of these techniques brings high systemic risks to the ecosystem and should be"}
+{"text": "discouraged and resisted These proposals are generally made in a wellintentioned way and so the goal is not to focus on individuals or projects rather the goal"}
+{"text": "is to focus on techniques The general rule of thumb that this post will attempt to defend is as follows dualuse of validator staked ETH while it has"}
+{"text": "some risks is fundamentally fine but attempting to recruit Ethereum social consensus for your applications own purposes is not If youre designing a protocol where even if everything completely breaks"}
+{"text": "the losses are kept contained to the validators and users who opted in to participating in and using your protocol this is lowrisk If on the other hand you"}
+{"text": "have the intent to rope in the broader Ethereum ecosystem social consensus to fork or reorg to solve your problems this is highrisk and I argue that we"}
+{"text": "should strongly resist all attempts to create such expectations A middle ground is situations that start off in the lowrisk category but give their participants incentives to slide into"}
+{"text": "the higherrisk category SchellingCoinstyle techniques especially mechanisms with heavy penalties for deviating from the majority are a major example It is the year"}
 {"text": "Frustrated with the existing options a group has decided to make a new ETHUSD price oracle which works by allowing validators to vote on the price"}
 {"text": "every hour If a validator votes they would be unconditionally rewarded with a portion of fees from the system But soon participants became lazy they connected to centralized APIs"}
 {"text": "and when those APIs got cyberattacked they either dropped out or started reporting false values To solve this incentives were introduced the oracle also votes retrospectively on"}
